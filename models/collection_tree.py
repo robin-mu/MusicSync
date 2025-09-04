@@ -12,8 +12,9 @@ class FolderType(Enum):
 
 
 class Folder(QStandardItem):
-    def __init__(self, type, parent, name='', settings=None):
+    def __init__(self, id, type, parent, name='', settings=None):
         super(Folder, self).__init__()
+        self.id = id
         self.name = name
         self.type = type
         self.parent = parent
@@ -21,6 +22,8 @@ class Folder(QStandardItem):
 
         self.setText(self.name)
         self.setEditable(False)
+        if type == FolderType.COLLECTION:
+            self.setDropEnabled(False)
 
 
 class FoldersTreeModel(QStandardItemModel):
@@ -31,7 +34,7 @@ class FoldersTreeModel(QStandardItemModel):
         self.folders: dict[int, Folder] = {}
 
         for row in self.df.itertuples():
-            self.folders[row.Index] = Folder(name=row.name, type=FolderType(row.type), parent=row.parent, settings=row.settings)
+            self.folders[row.Index] = Folder(id=row.Index, name=row.name, type=FolderType(row.type), parent=row.parent, settings=row.settings)
 
         for row in self.df.itertuples():
             if pd.notna(row.parent):
@@ -39,6 +42,16 @@ class FoldersTreeModel(QStandardItemModel):
             else:
                 self.root.appendRow(self.folders[row.Index])
 
-    def add_folder(self, folder, parent):
+    def add_folder(self, folder: Folder, parent: Folder):
         parent.appendRow(folder)
         self.folders[max(self.folders.keys()) + 1] = folder
+
+    def remove_folder(self, folder):
+        parent = self.folders.get(folder.parent, self.root)
+
+        for row in range(parent.rowCount()):
+            if parent.child(row) == folder:
+                parent.removeRow(row)
+                return
+
+        self.folders.pop[folder.id]
