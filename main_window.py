@@ -1,9 +1,9 @@
 from PySide6.QtCore import Qt, QItemSelection
 from PySide6.QtGui import QAction, QCloseEvent
-from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog
 
 from gui import Ui_MainWindow
-from models.folder_tree import FoldersTreeModel, Folder, Collection
+from models.library import LibraryModel, Folder, Collection, CollectionUrl
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -11,7 +11,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
-        self.treeView.setModel(FoldersTreeModel())
+        self.treeView.setModel(LibraryModel())
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
         self.treeView.customContextMenuRequested.connect(self.tree_context_menu)
@@ -20,6 +20,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.actionLoad_folders_xml_file.triggered.connect(self.load_folders_xml_file)
         self.actionSave_folders_xml_file.triggered.connect(self.save_folders_xml_file)
+        self.actionChange_track_table.triggered.connect(self.change_metadata_table)
 
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
         self.settings_save.pressed.connect(self.save_settings)
@@ -40,7 +41,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="XML files (*.xml)")
         if filename:
-            self.treeView.setModel(FoldersTreeModel(filename))
+            self.treeView.setModel(LibraryModel(filename))
             self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
             self.treeView.model().dataChanged.connect(self.change_model)
             self.treeView.expandAll()
@@ -53,8 +54,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 filename += '.xml'
 
             self.treeView.model().to_xml(filename)
+            self.model_changed = False
             return True
         return False
+
+    def change_metadata_table(self):
+        filename, ok = QFileDialog.getOpenFileName(self, 'Select a metadata table to associate this library with', filter="CSV files (*.csv)")
+        if filename:
+            self.treeView.model().track_table_path = filename
 
     def tree_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if deselected.indexes():
@@ -62,7 +69,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if isinstance(previous_item, Collection):
                 self.save_settings(previous_item)
 
+        if not selected.indexes():
+            return
+
         item = self.treeView.model().itemFromIndex(selected.indexes()[0])
+
+        if isinstance(item, CollectionUrl):
+            item = item.parent()
 
         if isinstance(item, Collection):
             self.settings_folder_path.setText(item.folder_path)
@@ -81,6 +94,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             item = self.treeView.model().itemFromIndex(self.treeView.currentIndex())
         if item is None or isinstance(item, Folder):
             return
+        if isinstance(item, CollectionUrl):
+            item = item.parent()
 
         if (item.folder_path == self.settings_folder_path.text() and
                 item.filename_format == self.settings_filename_format.text() and
@@ -93,7 +108,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.file_extension = self.settings_file_extension.text()
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
 
-        self.treeView.model().dataChanged.emit(self.treeView.currentIndex(), self.treeView.currentIndex())
+        item.emitDataChanged()
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -119,13 +134,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.treeView.setCurrentIndex(new_index)
             self.treeView.edit(new_index)
 
-            self.treeView.model().dataChanged.emit(new_index, new_index)
+            new_folder.emitDataChanged()
 
-        def remove_folder():
+        def remove():
             current_index = self.treeView.currentIndex()
-            self.treeView.model().removeRow(current_index.row(), current_index.parent())
+            parent = self.treeView.currentIndex().parent()
+            self.treeView.model().removeRow(current_index.row(), parent)
 
-            self.treeView.model().dataChanged.emit(current_index, current_index)
+            self.treeView.model().itemFromIndex(parent).emitDataChanged()
+
+        def add_url():
+            url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
+            if url:
+                new_url = self.treeView.model().add_url(parent, url)
+                new_url.emitDataChanged()
 
         menu = QMenu(self.treeView)
 
@@ -137,10 +159,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             add_collection_action = QAction('Add Collection')
             add_collection_action.triggered.connect(lambda: add_folder(False))
             menu.addAction(add_collection_action)
+        elif isinstance(parent, Collection):
+            add_url_action = QAction('Add URL')
+            add_url_action.triggered.connect(add_url)
+            menu.addAction(add_url_action)
 
         if index.model() is not None:
             delete_action = QAction('Delete')
-            delete_action.triggered.connect(remove_folder)
+            delete_action.triggered.connect(remove)
             menu.addAction(delete_action)
 
         menu.exec(self.treeView.viewport().mapToGlobal(point))
