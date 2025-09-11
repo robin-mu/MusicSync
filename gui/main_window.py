@@ -1,5 +1,6 @@
+from PySide6 import QtCore
 from PySide6.QtCore import Qt, QItemSelection
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QCursor
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog
 
 from gui.gui import Ui_MainWindow
@@ -20,10 +21,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionOpen_library.triggered.connect(self.open_library)
         self.actionSave_library.triggered.connect(self.save_library)
         self.actionSave_library_as.triggered.connect(self.save_library_as)
-        self.actionChange_track_table.triggered.connect(self.change_metadata_table)
+        self.actionChange_Track_Metdata_Table.triggered.connect(self.change_metadata_table)
 
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
         self.settings_save.pressed.connect(self.save_settings)
+
+        self.metadata_table_label.mousePressEvent = self.change_metadata_table
+        self.metadata_table_label.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
 
     def new_library(self):
         if self.treeView.model().has_changed():
@@ -37,10 +41,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.treeView.setModel(LibraryModel())
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+        self.update_metadata_table_label()
 
     def open_library(self):
         if self.treeView.model().has_changed():
-            answer = QMessageBox.question(self, 'Save File', 'The current file has not been saved yet. Do you want to save it?', QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            answer = QMessageBox.question(self, 'Save Library', 'The current library has not been saved yet. Do you want to save it?', QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
 
             if answer == QMessageBox.Yes:
                 if not self.save_library():
@@ -53,6 +58,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.treeView.setModel(LibraryModel(filename))
             self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
             self.treeView.expandAll()
+            self.update_metadata_table_label(self.treeView.model().metadata_table_path)
 
     def save_library(self):
         if self.treeView.model().path:
@@ -71,10 +77,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return True
         return False
 
-    def change_metadata_table(self):
-        filename, ok = QFileDialog.getOpenFileName(self, 'Select a metadata table to associate this library with', filter="CSV files (*.csv)")
-        if filename:
-            self.treeView.model().metadata_table_path = filename
+    def change_metadata_table(self, *args):
+        dialog = QFileDialog(self)
+        dialog.setWindowTitle('Select a metadata table to associate this library with')
+        dialog.setNameFilter('CSV files (*.csv)')
+        dialog.setFileMode(QFileDialog.FileMode.AnyFile)
+
+        if dialog.exec():
+            self.treeView.model().metadata_table_path = dialog.selectedFiles()[0]
+            self.update_metadata_table_label(dialog.selectedFiles()[0])
 
     def tree_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if deselected.indexes():
@@ -177,11 +188,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         menu.exec(self.treeView.viewport().mapToGlobal(point))
 
+    def update_metadata_table_label(self, path=''):
+        if path:
+            self.metadata_table_label.setText(f'Current track metadata table: {path} (Click to change)')
+        else:
+            self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
+
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
         if self.treeView.model().has_changed():
-            answer = QMessageBox.question(self, 'Save File',
-                                          'The current file has not been saved yet. Do you want to save it?',
+            answer = QMessageBox.question(self, 'Save Library',
+                                          'The current library has not been saved yet. Do you want to save it?',
                                           QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
 
             if answer == QMessageBox.Yes:
