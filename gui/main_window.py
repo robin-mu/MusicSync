@@ -2,8 +2,8 @@ from PySide6.QtCore import Qt, QItemSelection
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog
 
-from gui import Ui_MainWindow
-from models.library import LibraryModel, Folder, Collection, CollectionUrl
+from gui.gui import Ui_MainWindow
+from gui.models.library import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -61,12 +61,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def change_metadata_table(self):
         filename, ok = QFileDialog.getOpenFileName(self, 'Select a metadata table to associate this library with', filter="CSV files (*.csv)")
         if filename:
-            self.treeView.model().track_table_path = filename
+            self.treeView.model().metadata_table_path = filename
 
     def tree_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if deselected.indexes():
             previous_item = self.treeView.model().itemFromIndex(deselected.indexes()[0])
-            if isinstance(previous_item, Collection):
+            if isinstance(previous_item, CollectionItem):
                 self.save_settings(previous_item)
 
         if not selected.indexes():
@@ -74,10 +74,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         item = self.treeView.model().itemFromIndex(selected.indexes()[0])
 
-        if isinstance(item, CollectionUrl):
+        if isinstance(item, CollectionUrlItem):
             item = item.parent()
 
-        if isinstance(item, Collection):
+        if isinstance(item, CollectionItem):
             self.settings_folder_path.setText(item.folder_path)
             self.settings_filename_format.setText(item.filename_format)
             self.settings_file_extension.setText(item.file_extension)
@@ -89,12 +89,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.entries_stack.setCurrentIndex(1)
             self.settings_stack.setCurrentIndex(1)
 
-    def save_settings(self, item: Collection = None):
+    def save_settings(self, item: CollectionItem = None):
         if item is None:
             item = self.treeView.model().itemFromIndex(self.treeView.currentIndex())
-        if item is None or isinstance(item, Folder):
+        if item is None or isinstance(item, FolderItem):
             return
-        if isinstance(item, CollectionUrl):
+        if isinstance(item, CollectionUrlItem):
             item = item.parent()
 
         if (item.folder_path == self.settings_folder_path.text() and
@@ -138,10 +138,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         def remove():
             current_index = self.treeView.currentIndex()
-            parent = self.treeView.currentIndex().parent()
-            self.treeView.model().removeRow(current_index.row(), parent)
+            parent_index = self.treeView.currentIndex().parent()
+            self.treeView.model().removeRow(current_index.row(), parent_index)
 
-            self.treeView.model().itemFromIndex(parent).emitDataChanged()
+            parent_item = self.treeView.model().itemFromIndex(parent_index) or self.treeView.model().root
+            parent_item.emitDataChanged()
 
         def add_url():
             url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
@@ -151,7 +152,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         menu = QMenu(self.treeView)
 
-        if isinstance(parent, Folder) or index.model() is None:
+        if isinstance(parent, FolderItem) or index.model() is None:
             add_folder_action = QAction('Add Folder')
             add_folder_action.triggered.connect(lambda: add_folder(True))
             menu.addAction(add_folder_action)
@@ -159,7 +160,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             add_collection_action = QAction('Add Collection')
             add_collection_action.triggered.connect(lambda: add_folder(False))
             menu.addAction(add_collection_action)
-        elif isinstance(parent, Collection):
+        elif isinstance(parent, CollectionItem):
             add_url_action = QAction('Add URL')
             add_url_action.triggered.connect(add_url)
             menu.addAction(add_url_action)

@@ -1,0 +1,134 @@
+from PySide6.QtGui import QStandardItemModel, QStandardItem
+
+from music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl
+
+
+class FolderItem(QStandardItem):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.setText(kwargs.get('name', ''))
+
+    @staticmethod
+    def from_object(folder: Folder) -> 'FolderItem':
+        folder_item = FolderItem(**vars(folder))
+        for child in folder.children:
+            if isinstance(child, Folder):
+                folder_item.appendRow(FolderItem.from_object(child))
+            elif isinstance(child, Collection):
+                folder_item.appendRow(CollectionItem.from_object(child))
+
+        return folder_item
+
+    def to_library_object(self) -> Folder:
+        children = []
+        for i in range(self.rowCount()):
+            child = self.child(i)
+            children.append(child.to_library_object())
+
+        return Folder(name=self.text(), children=children)
+
+
+class CollectionItem(QStandardItem):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        self.setText(kwargs.get('name', ''))
+
+        self.folder_path = kwargs.get('folder_path', '')
+        self.filename_format = kwargs.get('filename_format', '')
+        self.file_extension = kwargs.get('file_extension', '')
+        self.file_tags = kwargs.get('file_tags', '')
+        self.save_playlists_to_subfolders = kwargs.get('save_playlists_to_subfolders', False)
+
+    @staticmethod
+    def from_object(collection: Collection) -> 'CollectionItem':
+        collection_item = CollectionItem(**vars(collection))
+        for url in collection.urls:
+            collection_item.appendRow(CollectionUrlItem.from_object(url))
+
+        return collection_item
+
+    def to_library_object(self):
+        children = []
+        for i in range(self.rowCount()):
+            child = self.child(i)
+            children.append(child.to_library_object())
+
+        return Collection(name=self.text(), urls=children, **vars(self))
+
+
+class CollectionUrlItem(QStandardItem):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.url: str = kwargs['url']
+        name = kwargs.get('name')
+        if not name:
+            f = self.font()
+            f.setItalic(True)
+            self.setFont(f)
+
+            self.setEditable(False)
+
+            name = self.url
+
+        self.setText(name)
+        self.tracks: list[str] = kwargs.get('tracks', [])
+
+    def set_name(self, name: str):
+        self.setText(name)
+        f = self.font()
+        f.setItalic(False)
+        self.setFont(f)
+        self.setEditable(True)
+
+    @staticmethod
+    def from_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
+        return CollectionUrlItem(**vars(collection_url))
+
+    def to_library_object(self):
+        name = self.text() if self.text() != self.url else ''
+        return CollectionUrl(name=name, **vars(self))
+
+
+class LibraryModel(QStandardItemModel):
+    def __init__(self, xml_path: str=None):
+        super(LibraryModel, self).__init__()
+
+        self.root = self.invisibleRootItem()
+        self.metadata_table_path = ''
+
+        if xml_path is not None:
+            library = MusicSyncLibrary.read_xml(xml_path)
+            self.metadata_table_path = library.metadata_table_path
+
+            for child in library.children:
+                if isinstance(child, Folder):
+                    self.root.appendRow(FolderItem.from_object(child))
+                elif isinstance(child, Collection):
+                    self.root.appendRow(CollectionItem.from_object(child))
+
+    def to_xml(self, filename):
+        children = []
+        for i in range(self.root.rowCount()):
+            row = self.root.child(i)
+            children.append(row.to_library_object())
+
+        MusicSyncLibrary(self.metadata_table_path, children).write_xml(filename)
+
+    @staticmethod
+    def add_folder(parent: FolderItem):
+        new_folder = FolderItem()
+        parent.appendRow(new_folder)
+        return new_folder
+
+    @staticmethod
+    def add_collection(parent: FolderItem):
+        new_collection = CollectionItem()
+        parent.appendRow(new_collection)
+        return new_collection
+
+    @staticmethod
+    def add_url(parent: CollectionItem, url: str, name: str= '', tracks=None):
+        new_url = CollectionUrlItem(url=url, name=name, tracks=tracks)
+        parent.appendRow(new_url)
+        return new_url
