@@ -23,7 +23,7 @@ class MusicSyncLibrary:
         return MusicSyncLibrary(children=children, **root.attrib)
 
     def write_xml(self, xml_path: str):
-        attrs = vars(self)
+        attrs = vars(self).copy()
         attrs.pop('children')
 
         root = et.Element('MusicSyncLibrary', **attrs)
@@ -50,7 +50,7 @@ class Folder:
         return Folder(children=children, **el.attrib)
 
     def to_xml(self) -> Element:
-        attrs = vars(self)
+        attrs = vars(self).copy()
         attrs.pop('children')
 
         el = et.Element('Folder', **attrs)
@@ -82,8 +82,9 @@ class Collection:
         return Collection(urls=urls, **el.attrib)
 
     def to_xml(self) -> Element:
-        attrs = vars(self)
+        attrs = vars(self).copy()
         attrs.pop('urls')
+        attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
 
         el = et.Element('Collection', **attrs)
         for url in self.urls:
@@ -106,7 +107,7 @@ class CollectionUrl:
         return CollectionUrl(**el.attrib)
 
     def to_xml(self) -> Element:
-        attrs = vars(self)
+        attrs = vars(self).copy()
         attrs.pop('tracks')
 
         el = et.Element('CollectionUrl', **attrs)

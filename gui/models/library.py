@@ -94,26 +94,44 @@ class LibraryModel(QStandardItemModel):
     def __init__(self, xml_path: str=None):
         super(LibraryModel, self).__init__()
 
+        self.path = xml_path
         self.root = self.invisibleRootItem()
         self.metadata_table_path = ''
+        self.loaded_library_object = None
 
         if xml_path is not None:
-            library = MusicSyncLibrary.read_xml(xml_path)
-            self.metadata_table_path = library.metadata_table_path
+            self.loaded_library_object = MusicSyncLibrary.read_xml(xml_path)
+            self.metadata_table_path = self.loaded_library_object.metadata_table_path
 
-            for child in library.children:
+            for child in self.loaded_library_object.children:
                 if isinstance(child, Folder):
                     self.root.appendRow(FolderItem.from_object(child))
                 elif isinstance(child, Collection):
                     self.root.appendRow(CollectionItem.from_object(child))
 
-    def to_xml(self, filename):
+    def to_library_object(self) -> MusicSyncLibrary:
         children = []
         for i in range(self.root.rowCount()):
             row = self.root.child(i)
             children.append(row.to_library_object())
+        return MusicSyncLibrary(self.metadata_table_path, children)
 
-        MusicSyncLibrary(self.metadata_table_path, children).write_xml(filename)
+    def to_xml(self, filename=None):
+        if filename is None:
+            filename = self.path
+        lib_object = self.to_library_object()
+        self.loaded_library_object = lib_object
+        lib_object.write_xml(filename)
+
+    def has_changed(self):
+        if self.root.rowCount() == 0:
+            return False
+
+        if self.loaded_library_object is None:
+            return True
+
+        return self.to_library_object() != self.loaded_library_object
+
 
     @staticmethod
     def add_folder(parent: FolderItem):
@@ -129,6 +147,9 @@ class LibraryModel(QStandardItemModel):
 
     @staticmethod
     def add_url(parent: CollectionItem, url: str, name: str= '', tracks=None):
+        if tracks is None:
+            tracks = []
+
         new_url = CollectionUrlItem(url=url, name=name, tracks=tracks)
         parent.appendRow(new_url)
         return new_url

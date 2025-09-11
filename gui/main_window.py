@@ -15,26 +15,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
         self.treeView.customContextMenuRequested.connect(self.tree_context_menu)
-        self.model_changed = False
-        self.treeView.model().dataChanged.connect(self.change_model)
 
-        self.actionLoad_folders_xml_file.triggered.connect(self.load_folders_xml_file)
-        self.actionSave_folders_xml_file.triggered.connect(self.save_folders_xml_file)
+        self.actionNew_library.triggered.connect(self.new_library)
+        self.actionOpen_library.triggered.connect(self.open_library)
+        self.actionSave_library.triggered.connect(self.save_library)
+        self.actionSave_library_as.triggered.connect(self.save_library_as)
         self.actionChange_track_table.triggered.connect(self.change_metadata_table)
 
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
         self.settings_save.pressed.connect(self.save_settings)
 
-    def change_model(self):
-        print("change_model")
-        self.model_changed = True
-
-    def load_folders_xml_file(self):
-        if self.treeView.model().root.rowCount() > 0 and self.model_changed:
+    def new_library(self):
+        if self.treeView.model().has_changed():
             answer = QMessageBox.question(self, 'Save File', 'The current file has not been saved yet. Do you want to save it?', QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
 
             if answer == QMessageBox.Yes:
-                if not self.save_folders_xml_file():
+                if not self.save_library():
+                    return
+            elif answer == QMessageBox.Cancel:
+                return
+
+        self.treeView.setModel(LibraryModel())
+        self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+
+    def open_library(self):
+        if self.treeView.model().has_changed():
+            answer = QMessageBox.question(self, 'Save File', 'The current file has not been saved yet. Do you want to save it?', QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+
+            if answer == QMessageBox.Yes:
+                if not self.save_library():
                     return
             elif answer == QMessageBox.Cancel:
                 return
@@ -43,18 +52,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if filename:
             self.treeView.setModel(LibraryModel(filename))
             self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
-            self.treeView.model().dataChanged.connect(self.change_model)
             self.treeView.expandAll()
-            self.model_changed = False
 
-    def save_folders_xml_file(self):
+    def save_library(self):
+        if self.treeView.model().path:
+            self.treeView.model().to_xml()
+            return True
+
+        return self.save_library_as()
+
+    def save_library_as(self):
         filename, ok = QFileDialog.getSaveFileName(self, 'Select a file to save to', filter="XML files (*.xml)")
         if filename:
             if not filename.endswith('.xml'):
                 filename += '.xml'
 
             self.treeView.model().to_xml(filename)
-            self.model_changed = False
             return True
         return False
 
@@ -108,8 +121,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.file_extension = self.settings_file_extension.text()
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
 
-        item.emitDataChanged()
-
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
         if folder:
@@ -134,21 +145,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.treeView.setCurrentIndex(new_index)
             self.treeView.edit(new_index)
 
-            new_folder.emitDataChanged()
-
         def remove():
             current_index = self.treeView.currentIndex()
             parent_index = self.treeView.currentIndex().parent()
             self.treeView.model().removeRow(current_index.row(), parent_index)
 
-            parent_item = self.treeView.model().itemFromIndex(parent_index) or self.treeView.model().root
-            parent_item.emitDataChanged()
-
         def add_url():
             url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
             if url:
-                new_url = self.treeView.model().add_url(parent, url)
-                new_url.emitDataChanged()
+                self.treeView.model().add_url(parent, url)
 
         menu = QMenu(self.treeView)
 
@@ -174,16 +179,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
-        if self.model_changed:
+        if self.treeView.model().has_changed():
             answer = QMessageBox.question(self, 'Save File',
                                           'The current file has not been saved yet. Do you want to save it?',
                                           QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
 
             if answer == QMessageBox.Yes:
-                if not self.save_folders_xml_file():
-                    event.ignore()
-                else:
+                if self.save_library():
                     event.accept()
+                else:
+                    event.ignore()
             elif answer == QMessageBox.Cancel:
                 event.ignore()
             elif answer == QMessageBox.No:
