@@ -67,6 +67,8 @@ class Collection:
     file_tags: str = ''
     save_playlists_to_subfolders: bool = False
     urls: list['CollectionUrl'] = field(default_factory=list)
+    sync_bookmark_file: str = ''
+    sync_bookmark_folder: str = ''
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):

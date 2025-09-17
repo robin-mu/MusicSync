@@ -1,12 +1,13 @@
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon
 
-from music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl
+from src.music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl
 
 
 class FolderItem(QStandardItem):
     def __init__(self, **kwargs):
         super().__init__()
         self.setText(kwargs.get('name', ''))
+        self.setIcon(QIcon.fromTheme('folder'))
 
     @staticmethod
     def from_object(folder: Folder) -> 'FolderItem':
@@ -33,12 +34,15 @@ class CollectionItem(QStandardItem):
         super().__init__()
 
         self.setText(kwargs.get('name', ''))
+        self.setIcon(QIcon.fromTheme('text-x-generic'))
 
         self.folder_path = kwargs.get('folder_path', '')
         self.filename_format = kwargs.get('filename_format', '')
         self.file_extension = kwargs.get('file_extension', '')
         self.file_tags = kwargs.get('file_tags', '')
         self.save_playlists_to_subfolders = kwargs.get('save_playlists_to_subfolders', False)
+        self.sync_bookmark_file = kwargs.get('sync_bookmark_file', '')
+        self.sync_bookmark_folder = kwargs.get('sync_bookmark_folder', '')
 
     @staticmethod
     def from_object(collection: Collection) -> 'CollectionItem':
@@ -72,6 +76,7 @@ class CollectionUrlItem(QStandardItem):
             name = self.url
 
         self.setText(name)
+        self.setIcon(QIcon.fromTheme('folder-remote'))
         self.tracks: list[str] = kwargs.get('tracks', [])
 
     def set_name(self, name: str):

@@ -1,1 +1,5 @@
 .idea
+*.json
+*.xml
+*.csv
+*.ui
