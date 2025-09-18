@@ -19,13 +19,13 @@ class BookmarkWindow(QDialog, Ui_Dialog):
             self.bookmark_path_entry.setText(filename)
 
     def load_file(self):
-        def append_tree(parent: QTreeWidgetItem | None, children: list):
-            for child in children:
+        def append_tree(parent: QTreeWidgetItem | None, children: dict):
+            for child in children.values():
                 if isinstance(child, BookmarkFolder):
-                    new_child = QTreeWidgetItem([child.title])
+                    new_child = QTreeWidgetItem([child.title, '', '', child.id])
                     append_tree(new_child, child.children)
                 elif isinstance(child, Bookmark):
-                    new_child = QTreeWidgetItem([child.bookmark_title, child.page_title, child.url])
+                    new_child = QTreeWidgetItem([child.bookmark_title, child.page_title, child.url, child.id])
 
                 if parent is None:
                     self.bookmark_tree_widget.addTopLevelItem(new_child)

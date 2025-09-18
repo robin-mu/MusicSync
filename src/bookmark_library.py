@@ -2,31 +2,53 @@ import os
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Union
+
 import pandas as pd
-import json
+
 
 @dataclass
 class Bookmark:
+    id: str
+    parent: Union['BookmarkFolder', 'BookmarkLibrary'] = field(repr=False)
     url: str
     bookmark_title: str
     page_title: str
 
 @dataclass
 class BookmarkFolder:
+    id: str
+    parent: Union['BookmarkFolder', 'BookmarkLibrary'] = field(repr=False)
     title: str
-    children: list[Bookmark] = field(default_factory=list)
+    children: dict[str, Union['Bookmark', 'BookmarkFolder']] = field(default_factory=dict, repr=False)
+
+    @staticmethod
+    def flatten(folder: 'BookmarkFolder') -> dict[str, 'Bookmark']:
+        flattened = {}
+        for child in folder.children.values():
+            if isinstance(child, BookmarkFolder):
+                flattened.update(BookmarkFolder.flatten(child))
+            elif isinstance(child, Bookmark):
+                flattened[child.id] = child
+
+        return flattened
+
 
 @dataclass
 class BookmarkLibrary:
-    children: list[Union['Bookmark', 'BookmarkFolder']] = field(default_factory=list)
+    children: dict[int | str, Union['Bookmark', 'BookmarkFolder']] = field(default_factory=dict)
 
     @staticmethod
     def create_from_path(path: str) -> 'BookmarkLibrary':
         if 'firefox' in path.lower():
             return FirefoxLibrary.from_path(path)
-        elif 'opera' in path.lower():
-            return OperaLibrary.from_path(path)
         raise ValueError('This browser is not supported')
+
+    def go_to_path(self, id_path: list[str]) -> Union['BookmarkFolder', 'Bookmark']:
+        cursor = self
+        for id in id_path:
+            cursor = cursor.children[id]
+
+        return cursor
 
 class FirefoxLibrary(BookmarkLibrary):
     @staticmethod
@@ -39,27 +61,24 @@ class FirefoxLibrary(BookmarkLibrary):
                                 'LEFT JOIN moz_places AS p ON b.fk=p.id', connection, index_col='id')
 
         folders: dict[int, BookmarkFolder] = {}
+        library = FirefoxLibrary()
         for row in bookmarks.itertuples():
+            parent = folders[row.parent] if row.parent != 0 else library
             if row.type == 1:
-                new_entry = Bookmark(url=row.url, bookmark_title=row.bookmark_title, page_title=row.page_title)
+                new_entry = Bookmark(id=str(row.Index), parent=parent, url=row.url, bookmark_title=row.bookmark_title, page_title=row.page_title)
             elif row.type == 2:
-                new_entry = BookmarkFolder(title=row.bookmark_title)
+                new_entry = BookmarkFolder(id=str(row.Index), parent=parent, title=row.bookmark_title)
                 folders[row.Index] = new_entry
             else:
                 continue
 
             if row.parent != 0:
-                folders[row.parent].children.append(new_entry)
+                folders[row.parent].children[new_entry.id] = new_entry
+            else:
+                library.children = {new_entry.id: new_entry}
 
-        return FirefoxLibrary(children=list(folders.values()))
+        return library
 
-
-class OperaLibrary(BookmarkLibrary):
-    @staticmethod
-    def from_path(path) -> 'OperaLibrary':
-        with open(path, 'r', encoding='utf8') as f:
-            file = json.load(f)
-        # TODO
 
 if __name__ == '__main__':
     BookmarkLibrary.create_from_path('/home/robin/.mozilla/firefox/dpv2usmq.default-release/places.sqlite')

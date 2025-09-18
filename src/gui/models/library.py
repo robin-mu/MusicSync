@@ -10,13 +10,13 @@ class FolderItem(QStandardItem):
         self.setIcon(QIcon.fromTheme('folder'))
 
     @staticmethod
-    def from_object(folder: Folder) -> 'FolderItem':
+    def from_library_object(folder: Folder) -> 'FolderItem':
         folder_item = FolderItem(**vars(folder))
         for child in folder.children:
             if isinstance(child, Folder):
-                folder_item.appendRow(FolderItem.from_object(child))
+                folder_item.appendRow(FolderItem.from_library_object(child))
             elif isinstance(child, Collection):
-                folder_item.appendRow(CollectionItem.from_object(child))
+                folder_item.appendRow(CollectionItem.from_library_object(child))
 
         return folder_item
 
@@ -43,12 +43,13 @@ class CollectionItem(QStandardItem):
         self.save_playlists_to_subfolders = kwargs.get('save_playlists_to_subfolders', False)
         self.sync_bookmark_file = kwargs.get('sync_bookmark_file', '')
         self.sync_bookmark_folder = kwargs.get('sync_bookmark_folder', '')
+        self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
 
     @staticmethod
-    def from_object(collection: Collection) -> 'CollectionItem':
+    def from_library_object(collection: Collection) -> 'CollectionItem':
         collection_item = CollectionItem(**vars(collection))
         for url in collection.urls:
-            collection_item.appendRow(CollectionUrlItem.from_object(url))
+            collection_item.appendRow(CollectionUrlItem.from_library_object(url))
 
         return collection_item
 
@@ -87,7 +88,7 @@ class CollectionUrlItem(QStandardItem):
         self.setEditable(True)
 
     @staticmethod
-    def from_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
+    def from_library_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
         return CollectionUrlItem(**vars(collection_url))
 
     def to_library_object(self):
@@ -99,10 +100,10 @@ class LibraryModel(QStandardItemModel):
     def __init__(self, xml_path: str=None):
         super(LibraryModel, self).__init__()
 
-        self.path = xml_path
+        self.path: str = xml_path
         self.root = self.invisibleRootItem()
-        self.metadata_table_path = ''
-        self.loaded_library_object = None
+        self.metadata_table_path: str = ''
+        self.loaded_library_object: MusicSyncLibrary | None = None
 
         if xml_path is not None:
             self.loaded_library_object = MusicSyncLibrary.read_xml(xml_path)
@@ -110,9 +111,9 @@ class LibraryModel(QStandardItemModel):
 
             for child in self.loaded_library_object.children:
                 if isinstance(child, Folder):
-                    self.root.appendRow(FolderItem.from_object(child))
+                    self.root.appendRow(FolderItem.from_library_object(child))
                 elif isinstance(child, Collection):
-                    self.root.appendRow(CollectionItem.from_object(child))
+                    self.root.appendRow(CollectionItem.from_library_object(child))
 
     def to_library_object(self) -> MusicSyncLibrary:
         children = []

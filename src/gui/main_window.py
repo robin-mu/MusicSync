@@ -28,7 +28,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
         self.settings_save.pressed.connect(self.save_settings)
         self.settings_sync_button.pressed.connect(self.change_sync_folder)
-        self.settings_stop_sync_button.pressed.connect(self.stop_sync)
+        self.settings_stop_sync_button.pressed.connect(lambda: self.update_current_sync_folder(''))
 
         self.metadata_table_label.mousePressEvent = self.change_metadata_table
         self.metadata_table_label.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
@@ -110,29 +110,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_filename_format.setText(item.filename_format)
             self.settings_file_extension.setText(item.file_extension)
             self.settings_subfolder.setChecked(item.save_playlists_to_subfolders)
-            if item.sync_bookmark_file:
-                font = self.settings_folder_path.font()
-                font.setItalic(False)
-                self.settings_bookmark_file_label.setFont(font)
-                self.settings_bookmark_folder_label.setFont(font)
 
-                self.settings_bookmark_file_label.setText(item.sync_bookmark_file)
-                self.settings_bookmark_folder_label.setText(item.sync_bookmark_folder)
-            else:
-                font = self.settings_folder_path.font()
-                font.setItalic(True)
-                self.settings_bookmark_file_label.setFont(font)
-                self.settings_bookmark_folder_label.setFont(font)
+            self.update_current_sync_folder(item.sync_bookmark_file, item.sync_bookmark_folder, item.sync_bookmark_title_as_url_name)
 
-                self.settings_bookmark_file_label.setText('Not syncing')
-                self.settings_bookmark_folder_label.setText('Not syncing')
-
-
-            self.entries_stack.setCurrentIndex(0)
-            self.settings_stack.setCurrentIndex(0)
-        else:
-            self.entries_stack.setCurrentIndex(1)
+            self.sync_stack.setCurrentIndex(1)
+            self.metadata_stack.setCurrentIndex(1)
+            self.tags_stack.setCurrentIndex(1)
             self.settings_stack.setCurrentIndex(1)
+        else:
+            self.sync_stack.setCurrentIndex(0)
+            self.metadata_stack.setCurrentIndex(0)
+            self.tags_stack.setCurrentIndex(0)
+            self.settings_stack.setCurrentIndex(0)
 
     def save_settings(self, item: CollectionItem = None):
         if item is None:
@@ -147,48 +136,58 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.file_extension = self.settings_file_extension.text()
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
 
-        if self.settings_bookmark_file_label.font().italic():
-            item.sync_bookmark_file = ''
-            item.sync_bookmark_folder = ''
-        else:
-            item.sync_bookmark_file = self.settings_bookmark_file_label.text()
-            item.sync_bookmark_folder = self.settings_bookmark_folder_label.text()
-
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
         if folder:
             self.settings_folder_path.setText(folder)
 
+    def update_current_sync_folder(self, file: str, path: list[tuple[str, str]]=None, set_url_name=False):
+        current_collection = self.treeView.model().itemFromIndex(self.treeView.selectedIndexes()[0])
+        if isinstance(current_collection, CollectionUrlItem):
+            current_collection = current_collection.parent()
+
+        current_collection.sync_bookmark_file = file
+        current_collection.sync_bookmark_folder = path or []
+        current_collection.sync_bookmark_title_as_url_name = set_url_name
+
+        if file:
+            font = self.settings_folder_path.font()
+            font.setItalic(False)
+            self.settings_bookmark_file_label.setFont(font)
+            self.settings_bookmark_folder_label.setFont(font)
+
+            self.settings_bookmark_file_label.setText(file)
+            self.settings_bookmark_folder_label.setText('/'.join([e[1] for e in path]))
+        else:
+            font = self.settings_folder_path.font()
+            font.setItalic(True)
+            self.settings_bookmark_file_label.setFont(font)
+            self.settings_bookmark_folder_label.setFont(font)
+
+            self.settings_bookmark_file_label.setText('Not syncing')
+            self.settings_bookmark_folder_label.setText('Not syncing')
+
     def change_sync_folder(self):
-        def selection_changed(selected: QItemSelection, deselected: QItemSelection):
+        def selection_changed(selected: QItemSelection, _: QItemSelection):
             if bookmark_window.bookmark_tree_widget.itemFromIndex(selected.indexes()[0]).text(2) == '':
                 bookmark_window.buttonBox.button(QDialogButtonBox.Ok).setEnabled(True)
             else:
                 bookmark_window.buttonBox.button(QDialogButtonBox.Ok).setEnabled(False)
 
         bookmark_window = BookmarkWindow()
-        bookmark_window.subfolder_check_box.setCheckable(False)
+        bookmark_window.subfolder_check_box.setEnabled(False)
         bookmark_window.bookmark_tree_widget.setSelectionMode(QTreeWidget.SingleSelection)
         bookmark_window.bookmark_tree_widget.selectionModel().selectionChanged.connect(selection_changed)
 
         if bookmark_window.exec() and bookmark_window.bookmark_tree_widget.selectedItems():
             file = bookmark_window.bookmark_path_entry.text()
             idx = bookmark_window.bookmark_tree_widget.selectedIndexes()[0]
-            folder = bookmark_window.bookmark_tree_widget.itemFromIndex(idx).text(0)
-            while (parent := bookmark_window.bookmark_tree_widget.itemFromIndex(idx.parent())) is not None:
-                folder = f'{parent.text(0)}/{folder}'
+            folder = []
+            while (item := bookmark_window.bookmark_tree_widget.itemFromIndex(idx)) is not None:
+                folder.append((item.text(3), item.text(0)))
                 idx = idx.parent()
 
-            self.settings_bookmark_file_label.setText(file)
-            self.settings_bookmark_folder_label.setText(folder)
-
-    def stop_sync(self):
-        font = self.settings_bookmark_file_label.font()
-        font.setItalic(True)
-        self.settings_bookmark_file_label.setFont(font)
-        self.settings_bookmark_folder_label.setFont(font)
-        self.settings_bookmark_folder_label.setText('Not syncing')
-        self.settings_bookmark_file_label.setText('Not syncing')
+            self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
 
     def tree_context_menu(self, point):
         index = self.treeView.indexAt(point)
