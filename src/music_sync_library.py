@@ -1,8 +1,9 @@
 import ast
 from dataclasses import dataclass, field
 import xml.etree.ElementTree as et
-from enum import Enum
-from typing import Union
+from enum import Enum, auto, StrEnum
+from typing import Union, ClassVar, Any
+from unittest import case
 from xml.etree.ElementTree import Element
 
 import pandas as pd
@@ -65,8 +66,85 @@ class Folder:
             el.append(child.to_xml())
         return el
 
+class TrackSyncStatus(StrEnum):
+    ADDED_TO_SOURCE = auto()
+    """
+    Track is present in source, but was not present in previous sync
+    """
+    NOT_DOWNLOADED = auto()
+    """
+    Track is present in source, was also present in previous sync, but corresponding file does not exist
+    """
+    REMOVED_FROM_SOURCE = auto()
+    """
+    Track is not present in source, but was present in previous sync
+    """
+    LOCAL_FILE = auto()
+    """
+    File is not in the permanently downloaded files, and does not correspond to a source track
+    """
+    PERMANENTLY_DOWNLOADED = auto()
+    """
+    File is present in the permanently downloaded files
+    """
+    DOWNLOADED = auto()
+    """
+    Track is present in source and the corresponding file exists
+    """
+
+
+class TrackSyncAction(StrEnum):
+    DOWNLOAD = auto(), 'Download'
+    """
+    Download the file
+    """
+    DELETE = auto(), 'Delete the file'
+    """
+    Delete the file
+    """
+    DO_NOTHING = auto(), 'Do nothing'
+    """
+    Don't delete or download any file and don't change the configuration. Effectively does nothing
+    """
+    KEEP_PERMANENTLY = auto(), 'Add file to permanently downloaded files'
+    """
+    Don't delete the file and add it to the list of permanently downloaded files
+    """
+    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Remove file from permanently downloaded files'
+    """
+    Remove the file from the list of permanently downloaded files (but don't delete the file)
+    """
+    DECIDE_INDIVIDUALLY = auto(), 'Decide individually'
+    """
+    Let the user decide in each case. Syncing can only start when none of the selected actions are ``DECIDE_INDIVIDUALLY``
+    """
+    def __new__(cls, value, gui_string):
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._sort_key = len(cls.__members__)
+        obj._gui_string = gui_string
+        return obj
+
+    @property
+    def sort_key(self) -> int:
+        return self._sort_key
+
+    @property
+    def gui_string(self) -> str:
+        return self._gui_string
+
+
 @dataclass
 class Collection:
+    DEFAULT_SYNC_ACTIONS: ClassVar[dict[TrackSyncStatus, TrackSyncAction]] = {
+        TrackSyncStatus.ADDED_TO_SOURCE: TrackSyncAction.DOWNLOAD,
+        TrackSyncStatus.NOT_DOWNLOADED: TrackSyncAction.DOWNLOAD,
+        TrackSyncStatus.REMOVED_FROM_SOURCE: TrackSyncAction.DECIDE_INDIVIDUALLY,
+        TrackSyncStatus.LOCAL_FILE: TrackSyncAction.DO_NOTHING,
+        TrackSyncStatus.PERMANENTLY_DOWNLOADED: TrackSyncAction.DO_NOTHING,
+        TrackSyncStatus.DOWNLOADED: TrackSyncAction.DO_NOTHING,
+    }
+
     name: str
     folder_path: str = ''
     filename_format: str = ''
@@ -75,9 +153,10 @@ class Collection:
     save_playlists_to_subfolders: bool = False
     urls: list['CollectionUrl'] = field(default_factory=list)
     sync_bookmark_file: str = ''
-    sync_bookmark_folder: list[tuple[str, str]] = field(default_factory=list)
+    sync_bookmark_path: list[tuple[str, str]] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
     exclude_after_download: bool = False
+    sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -87,28 +166,43 @@ class Collection:
         if isinstance(self.exclude_after_download, str):
             self.exclude_after_download = self.exclude_after_download == 'True'
 
-        if isinstance(self.sync_bookmark_folder, str):
-            self.sync_bookmark_folder = ast.literal_eval(self.sync_bookmark_folder)
-
     @staticmethod
     def from_xml(el: Element) -> 'Collection':
-        urls = []
+        kwargs: dict[str, Any] = {'urls': []}
         for child in el:
-            if child.tag == 'CollectionUrl':
-                urls.append(CollectionUrl.from_xml(child))
+            if child.tag == 'BookmarkSync':
+                kwargs['sync_bookmark_file'] = child.attrib['file']
+                kwargs['sync_bookmark_title_as_url_name'] = child.attrib['title_as_url_name']
+                kwargs['sync_bookmark_path'] = []
+                for path_component in child:
+                    kwargs['sync_bookmark_path'].append((path_component.attrib['id'], path_component.attrib['name']))
+            elif child.tag == 'SyncActions':
+                kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
+            elif child.tag == 'CollectionUrl':
+                kwargs['urls'].append(CollectionUrl.from_xml(child))
 
-        return Collection(urls=urls, **el.attrib)
+        return Collection(**(kwargs | el.attrib))
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
         attrs.pop('urls')
+        attrs.pop('sync_bookmark_file')
+        attrs.pop('sync_bookmark_path')
+        attrs.pop('sync_bookmark_title_as_url_name')
+        attrs.pop('sync_actions')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
-        attrs['sync_bookmark_title_as_url_name'] = str(self.sync_bookmark_title_as_url_name)
         attrs['exclude_after_download'] = str(self.exclude_after_download)
 
-        attrs['sync_bookmark_folder'] = str(self.sync_bookmark_folder)
-
         el = et.Element('Collection', **attrs)
+        if self.sync_bookmark_file:
+            bookmark_sync = et.Element('BookmarkSync', file=self.sync_bookmark_file,
+                                       title_as_url_name=str(self.sync_bookmark_title_as_url_name))
+            for idx, folder in self.sync_bookmark_path:
+                bookmark_sync.append(et.Element('PathComponent', id=idx, name=folder))
+            el.append(bookmark_sync)
+
+        if self.sync_actions != Collection.DEFAULT_SYNC_ACTIONS:
+            el.append(et.Element('SyncActions', **self.sync_actions))
         for url in self.urls:
             el.append(url.to_xml())
         return el
@@ -117,7 +211,7 @@ class Collection:
         # updating collection urls if sync with bookmarks is enabled
         if self.sync_bookmark_file:
             bookmarks = BookmarkLibrary.create_from_path(self.sync_bookmark_file)
-            folder = bookmarks.go_to_path([e[0] for e in self.sync_bookmark_folder])
+            folder = bookmarks.go_to_path([e[0] for e in self.sync_bookmark_path])
             flattened = BookmarkFolder.flatten(folder)
             for child in flattened.values():
                 if child.url not in self.urls:
@@ -172,12 +266,7 @@ class CollectionUrl:
             el.append(track_el)
         return el
 
-class TrackSyncStatus(Enum):
-    AddedToPlaylist = 1
-    NotDownloaded = 2
-    RemovedFromPlaylist = 3
-    Downloaded = 4
-
 
 if __name__ == '__main__':
-    print(MusicSyncLibrary().read_xml('../library.xml').children[0].children[0].update_sync_status())
+    print(TrackSyncAction.DO_NOTHING)
+    #print(MusicSyncLibrary().read_xml('../library.xml').children[0].children[0].update_sync_status())

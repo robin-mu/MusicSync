@@ -42,9 +42,10 @@ class CollectionItem(QStandardItem):
         self.file_tags = kwargs.get('file_tags', '')
         self.save_playlists_to_subfolders = kwargs.get('save_playlists_to_subfolders', False)
         self.sync_bookmark_file = kwargs.get('sync_bookmark_file', '')
-        self.sync_bookmark_folder = kwargs.get('sync_bookmark_folder', '')
+        self.sync_bookmark_path = kwargs.get('sync_bookmark_path', '')
         self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
+        self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
 
     @staticmethod
     def from_library_object(collection: Collection) -> 'CollectionItem':
@@ -54,7 +55,7 @@ class CollectionItem(QStandardItem):
 
         return collection_item
 
-    def to_library_object(self):
+    def to_library_object(self) -> Collection:
         children = []
         for i in range(self.rowCount()):
             child = self.child(i)

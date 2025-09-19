@@ -1,12 +1,14 @@
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QItemSelection, QModelIndex
-from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon, QFont
+from PySide6.QtCore import Qt, QItemSelection
+from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
     QDialogButtonBox, QTreeView
 
 from src.gui.bookmark_window import BookmarkWindow
 from src.gui.main_gui import Ui_MainWindow
 from src.gui.models.library import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
+from src.gui.models.sync_action_combobox import SyncActionComboboxModel
+from src.music_sync_library import TrackSyncStatus, TrackSyncAction
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -78,6 +80,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 filename += '.xml'
 
             self.treeView.model().to_xml(filename)
+            self.treeView.model().path = filename
             return True
         return False
 
@@ -92,28 +95,45 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.update_metadata_table_label(dialog.selectedFiles()[0])
 
     def tree_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
-        if deselected.indexes():
-            previous_item = self.treeView.model().itemFromIndex(deselected.indexes()[0])
-            if isinstance(previous_item, CollectionItem):
-                self.save_settings(previous_item)
-
         if not selected.indexes():
             return
 
-        item = self.treeView.model().itemFromIndex(selected.indexes()[0])
+        selected_collection = self.treeView.model().itemFromIndex(selected.indexes()[0])
 
-        if isinstance(item, CollectionUrlItem):
-            item = item.parent()
+        if isinstance(selected_collection, CollectionUrlItem):
+            selected_collection = selected_collection.parent()
 
-        if isinstance(item, CollectionItem):
-            self.settings_folder_path.setText(item.folder_path)
-            self.settings_filename_format.setText(item.filename_format)
-            self.settings_file_extension.setText(item.file_extension)
-            self.settings_subfolder.setChecked(item.save_playlists_to_subfolders)
+        if deselected.indexes():
+            deselected_collection = self.treeView.model().itemFromIndex(deselected.indexes()[0])
+            if isinstance(deselected_collection, CollectionUrlItem):
+                deselected_collection = deselected_collection.parent()
 
-            self.update_current_sync_folder(item.sync_bookmark_file, item.sync_bookmark_folder, item.sync_bookmark_title_as_url_name)
+            if isinstance(deselected_collection, CollectionItem):
+                if selected_collection == deselected_collection:
+                    return
+                self.save_settings(deselected_collection)
 
-            self.settings_exclude_urls_checkbox.setChecked(item.exclude_after_download)
+        if isinstance(selected_collection, CollectionItem):
+            self.settings_folder_path.setText(selected_collection.folder_path)
+            self.settings_filename_format.setText(selected_collection.filename_format)
+            self.settings_file_extension.setText(selected_collection.file_extension)
+            self.settings_subfolder.setChecked(selected_collection.save_playlists_to_subfolders)
+            self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
+
+            self.update_current_sync_folder(selected_collection.sync_bookmark_file, selected_collection.sync_bookmark_path, selected_collection.sync_bookmark_title_as_url_name)
+
+            self.added_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.ADDED_TO_SOURCE))
+            self.added_combo_box.setCurrentIndex(self.added_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.ADDED_TO_SOURCE].gui_string))
+            self.not_downloaded_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.NOT_DOWNLOADED))
+            self.not_downloaded_combo_box.setCurrentIndex(self.not_downloaded_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.NOT_DOWNLOADED].gui_string))
+            self.removed_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.REMOVED_FROM_SOURCE))
+            self.removed_combo_box.setCurrentIndex(self.removed_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.REMOVED_FROM_SOURCE].gui_string))
+            self.local_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.LOCAL_FILE))
+            self.local_combo_box.setCurrentIndex(self.local_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.LOCAL_FILE].gui_string))
+            self.permanent_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.PERMANENTLY_DOWNLOADED))
+            self.permanent_combo_box.setCurrentIndex(self.permanent_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.PERMANENTLY_DOWNLOADED].gui_string))
+            self.downloaded_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.DOWNLOADED))
+            self.downloaded_combo_box.setCurrentIndex(self.downloaded_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.DOWNLOADED].gui_string))
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
@@ -138,6 +158,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.file_extension = self.settings_file_extension.text()
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
+        item.sync_actions = {
+            TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(self.added_combo_box.currentIndex()).action,
+            TrackSyncStatus.NOT_DOWNLOADED: self.not_downloaded_combo_box.model().invisibleRootItem().child(self.not_downloaded_combo_box.currentIndex()).action,
+            TrackSyncStatus.REMOVED_FROM_SOURCE: self.removed_combo_box.model().invisibleRootItem().child(self.removed_combo_box.currentIndex()).action,
+            TrackSyncStatus.LOCAL_FILE: self.local_combo_box.model().invisibleRootItem().child(self.local_combo_box.currentIndex()).action,
+            TrackSyncStatus.PERMANENTLY_DOWNLOADED: self.permanent_combo_box.model().invisibleRootItem().child(self.permanent_combo_box.currentIndex()).action,
+            TrackSyncStatus.DOWNLOADED: self.downloaded_combo_box.model().invisibleRootItem().child(self.downloaded_combo_box.currentIndex()).action,
+        }
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -150,7 +178,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_collection = current_collection.parent()
 
         current_collection.sync_bookmark_file = file
-        current_collection.sync_bookmark_folder = path or []
+        current_collection.sync_bookmark_path = path or []
         current_collection.sync_bookmark_title_as_url_name = set_url_name
 
         if file:
