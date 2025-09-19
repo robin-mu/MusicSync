@@ -44,6 +44,7 @@ class CollectionItem(QStandardItem):
         self.sync_bookmark_file = kwargs.get('sync_bookmark_file', '')
         self.sync_bookmark_folder = kwargs.get('sync_bookmark_folder', '')
         self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
+        self.exclude_after_download = kwargs.get('exclude_after_download', False)
 
     @staticmethod
     def from_library_object(collection: Collection) -> 'CollectionItem':
@@ -66,6 +67,9 @@ class CollectionUrlItem(QStandardItem):
     def __init__(self, **kwargs):
         super().__init__()
         self.url: str = kwargs['url']
+        self.tracks: list[str] = kwargs.get('tracks', [])
+        self.excluded = kwargs.get('excluded', False)
+
         name = kwargs.get('name')
         if not name:
             f = self.font()
@@ -78,7 +82,6 @@ class CollectionUrlItem(QStandardItem):
 
         self.setText(name)
         self.setIcon(QIcon.fromTheme('folder-remote'))
-        self.tracks: list[str] = kwargs.get('tracks', [])
 
     def set_name(self, name: str):
         self.setText(name)

@@ -1,8 +1,8 @@
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QItemSelection
-from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
+from PySide6.QtCore import Qt, QItemSelection, QModelIndex
+from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon, QFont
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
-    QDialogButtonBox
+    QDialogButtonBox, QTreeView
 
 from src.gui.bookmark_window import BookmarkWindow
 from src.gui.main_gui import Ui_MainWindow
@@ -17,7 +17,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.treeView.setModel(LibraryModel())
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.treeView.customContextMenuRequested.connect(self.tree_context_menu)
+        self.treeView.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.treeView, point))
 
         self.actionNew_library.triggered.connect(self.new_library)
         self.actionOpen_library.triggered.connect(self.open_library)
@@ -113,6 +113,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_current_sync_folder(item.sync_bookmark_file, item.sync_bookmark_folder, item.sync_bookmark_title_as_url_name)
 
+            self.settings_exclude_urls_checkbox.setChecked(item.exclude_after_download)
+
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
             self.tags_stack.setCurrentIndex(1)
@@ -135,6 +137,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.filename_format = self.settings_filename_format.text()
         item.file_extension = self.settings_file_extension.text()
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
+        item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -189,86 +192,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
 
-    def tree_context_menu(self, point):
-        index = self.treeView.indexAt(point)
-        if index.model() is None:
-            parent = self.treeView.model().root
-        else:
-            parent = index.model().itemFromIndex(index)
-
-        def add_folder(is_folder: bool):
-            model = index.model() or self.treeView.model()
-
-            if is_folder:
-                new_folder = model.add_folder(parent)
-            else:
-                new_folder = model.add_collection(parent)
-
-            new_index = model.indexFromItem(new_folder)
-            self.treeView.setCurrentIndex(new_index)
-            self.treeView.edit(new_index)
-
-        def remove():
-            current_index = self.treeView.currentIndex()
-            parent_index = self.treeView.currentIndex().parent()
-            self.treeView.model().removeRow(current_index.row(), parent_index)
-
-        def add_url():
-            url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
-            if url:
-                self.treeView.model().add_url(parent, url)
-
-        def import_from_bookmarks():
-            bookmark_window = BookmarkWindow(self)
-            if bookmark_window.exec():
-                urls = []
-                def add_urls(item: QTreeWidgetItem, recursion_depth=None):
-                    if item.childCount() > 0 and (recursion_depth is None or recursion_depth > 0):
-                        for i in range(item.childCount()):
-                            add_urls(item.child(i), None if recursion_depth is None else recursion_depth - 1)
-                    elif item.text(2):
-                        data = {'url': item.text(2)}
-                        if bookmark_window.bookmark_title_check_box.isChecked():
-                            data['name'] = item.text(0)
-
-                        urls.append(data)
-
-                for item in bookmark_window.bookmark_tree_widget.selectedItems():
-                    add_urls(item, recursion_depth=None if bookmark_window.subfolder_check_box.isChecked() else 1)
-
-                for data in urls:
-                    self.treeView.model().add_url(parent, **data)
-
-        menu = QMenu(self.treeView)
-
-        if isinstance(parent, FolderItem) or index.model() is None:
-            add_folder_action = QAction('Add Folder')
-            add_folder_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderNew))
-            add_folder_action.triggered.connect(lambda: add_folder(True))
-            menu.addAction(add_folder_action)
-
-            add_collection_action = QAction('Add Collection')
-            add_collection_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ContactNew))
-            add_collection_action.triggered.connect(lambda: add_folder(False))
-            menu.addAction(add_collection_action)
-        elif isinstance(parent, CollectionItem):
-            add_url_action = QAction('Add URL')
-            add_url_action.setIcon(QIcon.fromTheme('list-add'))
-            add_url_action.triggered.connect(add_url)
-            menu.addAction(add_url_action)
-
-            import_urls_from_bookmarks_action = QAction('Import URLs From Bookmarks')
-            import_urls_from_bookmarks_action.triggered.connect(import_from_bookmarks)
-            menu.addAction(import_urls_from_bookmarks_action)
-
-        if index.model() is not None:
-            delete_action = QAction('Delete')
-            delete_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete))
-            delete_action.triggered.connect(remove)
-            menu.addAction(delete_action)
-
-        menu.exec(self.treeView.viewport().mapToGlobal(point))
-
     def update_metadata_table_label(self, path=''):
         if path:
             self.metadata_table_label.setText(f'Current track metadata table: {path} (Click to change)')
@@ -291,3 +214,95 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 event.ignore()
             elif answer == QMessageBox.No:
                 event.accept()
+
+class TreeContextMenu(QMenu):
+    def __init__(self, parent: QTreeView, point):
+        super().__init__(parent)
+        self.parent = parent
+        self.model: LibraryModel = parent.model()
+
+        self.index = parent.indexAt(point)
+
+        if self.index.model() is None:
+            self.item = self.model.root
+        else:
+            self.item = self.model.itemFromIndex(self.index)
+
+        if isinstance(self.item, FolderItem) or self.index.model() is None:
+            add_folder_action = QAction('Add Folder')
+            add_folder_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderNew))
+            add_folder_action.triggered.connect(lambda: self.add_folder(True))
+            self.addAction(add_folder_action)
+
+            add_collection_action = QAction('Add Collection')
+            add_collection_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ContactNew))
+            add_collection_action.triggered.connect(lambda: self.add_folder(False))
+            self.addAction(add_collection_action)
+        elif isinstance(self.item, CollectionItem):
+            add_url_action = QAction('Add URL')
+            add_url_action.setIcon(QIcon.fromTheme('list-add'))
+            add_url_action.triggered.connect(self.add_url)
+            self.addAction(add_url_action)
+
+            import_urls_from_bookmarks_action = QAction('Import URLs From Bookmarks')
+            import_urls_from_bookmarks_action.triggered.connect(self.import_from_bookmarks)
+            self.addAction(import_urls_from_bookmarks_action)
+        elif isinstance(self.item, CollectionUrlItem):
+            exclude_action = QAction('Include URL' if self.item.excluded else 'Exclude URL from downloading')
+            exclude_action.triggered.connect(self.toggle_excluded)
+            self.addAction(exclude_action)
+
+        if self.index.model() is not None:
+            delete_action = QAction('Delete')
+            delete_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete))
+            delete_action.triggered.connect(self.remove)
+            self.addAction(delete_action)
+
+        self.exec(self.parent.mapToGlobal(point))
+
+    def add_folder(self, is_folder: bool):
+        if is_folder:
+            new_folder = self.model.add_folder(self.item)
+        else:
+            new_folder = self.model.add_collection(self.item)
+
+        new_index = self.model.indexFromItem(new_folder)
+        self.parent.setCurrentIndex(new_index)
+        self.parent.edit(new_index)
+
+    def remove(self):
+        parent_index = self.index.parent()
+        self.model.removeRow(self.index.row(), parent_index)
+
+    def add_url(self):
+        url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
+        if url:
+            self.model.add_url(self.item, url)
+
+    def import_from_bookmarks(self):
+        bookmark_window = BookmarkWindow(self.parent)
+        if bookmark_window.exec():
+            urls = []
+
+            def add_urls(item: QTreeWidgetItem, recursion_depth=None):
+                if item.childCount() > 0 and (recursion_depth is None or recursion_depth > 0):
+                    for i in range(item.childCount()):
+                        add_urls(item.child(i), None if recursion_depth is None else recursion_depth - 1)
+                elif item.text(2):
+                    data = {'url': item.text(2)}
+                    if bookmark_window.bookmark_title_check_box.isChecked():
+                        data['name'] = item.text(0)
+
+                    urls.append(data)
+
+            for item in bookmark_window.bookmark_tree_widget.selectedItems():
+                add_urls(item, recursion_depth=None if bookmark_window.subfolder_check_box.isChecked() else 1)
+
+            for data in urls:
+                self.model.add_url(self.item, **data)
+
+    def toggle_excluded(self):
+        self.item.excluded = not self.item.excluded
+        font = self.item.font()
+        font.setStrikeOut(not font.strikeOut())
+        self.item.setFont(font)

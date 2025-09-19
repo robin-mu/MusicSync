@@ -77,12 +77,15 @@ class Collection:
     sync_bookmark_file: str = ''
     sync_bookmark_folder: list[tuple[str, str]] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
+    exclude_after_download: bool = False
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
             self.save_playlists_to_subfolders = self.save_playlists_to_subfolders == 'True'
         if isinstance(self.sync_bookmark_title_as_url_name, str):
             self.sync_bookmark_title_as_url_name = self.sync_bookmark_title_as_url_name == 'True'
+        if isinstance(self.exclude_after_download, str):
+            self.exclude_after_download = self.exclude_after_download == 'True'
 
         if isinstance(self.sync_bookmark_folder, str):
             self.sync_bookmark_folder = ast.literal_eval(self.sync_bookmark_folder)
@@ -100,8 +103,10 @@ class Collection:
         attrs = vars(self).copy()
         attrs.pop('urls')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
-        attrs['sync_bookmark_folder'] = str(self.sync_bookmark_folder)
         attrs['sync_bookmark_title_as_url_name'] = str(self.sync_bookmark_title_as_url_name)
+        attrs['exclude_after_download'] = str(self.exclude_after_download)
+
+        attrs['sync_bookmark_folder'] = str(self.sync_bookmark_folder)
 
         el = et.Element('Collection', **attrs)
         for url in self.urls:
@@ -140,7 +145,12 @@ class Collection:
 class CollectionUrl:
     url: str
     name: str = ''
+    excluded: bool = False
     tracks: set[str] = field(default_factory=set)
+
+    def __post_init__(self):
+        if isinstance(self.excluded, str):
+            self.excluded = self.excluded == 'True'
 
     @staticmethod
     def from_xml(el: Element) -> 'CollectionUrl':
@@ -153,6 +163,7 @@ class CollectionUrl:
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
         attrs.pop('tracks')
+        attrs['excluded'] = str(self.excluded)
 
         el = et.Element('CollectionUrl', **attrs)
         for track in self.tracks:

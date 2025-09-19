@@ -78,7 +78,3 @@ class FirefoxLibrary(BookmarkLibrary):
                 library.children = {new_entry.id: new_entry}
 
         return library
-
-
-if __name__ == '__main__':
-    BookmarkLibrary.create_from_path('/home/robin/.mozilla/firefox/dpv2usmq.default-release/places.sqlite')
