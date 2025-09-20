@@ -24,3 +24,4 @@ class SyncActionComboboxItem(QStandardItem):
         super().__init__()
         self.action = action
         self.setText(action.gui_string)
+        self.setStatusTip(action.gui_status_tip)

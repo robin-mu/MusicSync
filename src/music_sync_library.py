@@ -1,13 +1,15 @@
-import ast
-from dataclasses import dataclass, field
+from pprint import pprint
 import xml.etree.ElementTree as et
-from enum import Enum, auto, StrEnum
+from dataclasses import dataclass, field
+from enum import auto, StrEnum
+from pprint import pprint
 from typing import Union, ClassVar, Any
-from unittest import case
 from xml.etree.ElementTree import Element
 
 import pandas as pd
+import yt_dlp
 from yt_dlp import YoutubeDL
+from yt_dlp.postprocessor import FFmpegMetadataPP
 
 from src.bookmark_library import BookmarkLibrary, BookmarkFolder
 
@@ -66,6 +68,7 @@ class Folder:
             el.append(child.to_xml())
         return el
 
+
 class TrackSyncStatus(StrEnum):
     ADDED_TO_SOURCE = auto()
     """
@@ -94,35 +97,37 @@ class TrackSyncStatus(StrEnum):
 
 
 class TrackSyncAction(StrEnum):
-    DOWNLOAD = auto(), 'Download'
+    DOWNLOAD = auto(), 'Download', 'Download the file'
     """
     Download the file
     """
-    DELETE = auto(), 'Delete the file'
+    DELETE = auto(), 'Delete the file', 'Delete the file'
     """
     Delete the file
     """
-    DO_NOTHING = auto(), 'Do nothing'
+    DO_NOTHING = auto(), 'Do nothing', 'Don\'t delete or download any file and don\'t change the configuration'
     """
     Don't delete or download any file and don't change the configuration. Effectively does nothing
     """
-    KEEP_PERMANENTLY = auto(), 'Add file to permanently downloaded files'
+    KEEP_PERMANENTLY = auto(), 'Add file to permanently downloaded files', 'Don\'t delete the file and add it to the list of permanently downloaded files saved in the collection settings'
     """
     Don't delete the file and add it to the list of permanently downloaded files
     """
-    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Remove file from permanently downloaded files'
+    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Remove file from permanently downloaded files', 'Remove the file from the list of permanently downloaded files (but don\'t delete the file)'
     """
     Remove the file from the list of permanently downloaded files (but don't delete the file)
     """
-    DECIDE_INDIVIDUALLY = auto(), 'Decide individually'
+    DECIDE_INDIVIDUALLY = auto(), 'Decide individually', 'You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually"'
     """
     Let the user decide in each case. Syncing can only start when none of the selected actions are ``DECIDE_INDIVIDUALLY``
     """
-    def __new__(cls, value, gui_string):
+
+    def __new__(cls, value, gui_string, gui_status_tip):
         obj = str.__new__(cls, value)
         obj._value_ = value
         obj._sort_key = len(cls.__members__)
         obj._gui_string = gui_string
+        obj._gui_status_tip = gui_status_tip
         return obj
 
     @property
@@ -132,6 +137,10 @@ class TrackSyncAction(StrEnum):
     @property
     def gui_string(self) -> str:
         return self._gui_string
+
+    @property
+    def gui_status_tip(self) -> str:
+        return self._gui_status_tip
 
 
 @dataclass
@@ -156,7 +165,8 @@ class Collection:
     sync_bookmark_path: list[tuple[str, str]] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
     exclude_after_download: bool = False
-    sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
+    sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(
+        default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -215,24 +225,55 @@ class Collection:
             flattened = BookmarkFolder.flatten(folder)
             for child in flattened.values():
                 if child.url not in self.urls:
-                    self.urls.append(CollectionUrl(url=child.url, name=child.bookmark_title if self.sync_bookmark_title_as_url_name else ''))
+                    self.urls.append(CollectionUrl(url=child.url,
+                                                   name=child.bookmark_title if self.sync_bookmark_title_as_url_name else ''))
 
-        ydl_opts = {
-            'default_search': 'ytsearch',
-            'compat_opts': ['no-youtube-unavailable-videos']
-        }
+        ydl_opts = {'final_ext': 'mp3',
+                    'format': 'ba[acodec^=mp3]/ba/b',
+                    'outtmpl': {'pl_thumbnail': ''},
+                    'writethumbnail': True,
+                    'postprocessors': [{'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
+                                                     '%(playlist_index)s',
+                                                     '%(meta_track)s')],
+                                        'key': 'MetadataParser',
+                                        'when': 'pre_process'},
+                                       {'key': 'FFmpegExtractAudio',
+                                        'nopostoverwrites': False,
+                                        'preferredcodec': 'mp3',
+                                        'preferredquality': '5'},
+                                       {'add_chapters': True,
+                                        'add_infojson': 'if_exists',
+                                        'add_metadata': True,
+                                        'key': 'FFmpegMetadata'},
+                                       {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
+                    'compat_opts': ['no-youtube-unavailable-videos']
+                    }
 
         ydl = YoutubeDL(ydl_opts)
         sync_status = pd.DataFrame()
+        ydl.add_post_processor(YTMusicAlbumCover(), 'pre_process')
 
         # download track info of all collection urls
         for url in self.urls:
             info = ydl.extract_info(url.url, process=False)
             if info['_type'] == 'playlist':
-                playlist_tracks = set([e['url'] for e in info['entries']])
-                new_tracks = playlist_tracks - url.tracks
-                deleted_tracks = url.tracks - playlist_tracks
+                entries = list(info['entries'])
+                playlist_tracks = set([e['url'] for e in entries])
+                info['entries'] = entries
+            pprint(info)
 
+            info = ydl.process_ie_result(info, download=True)
+            pprint(info)
+
+class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
+    # set 1:1 album cover to be embedded (only for yt-music)
+    def run(self, info):
+        for t in info['thumbnails']:
+            if t['id'] == '2':
+                info['thumbnail'] = t['url']
+                info['thumbnails'] = [t]
+                break
+        return [], info
 
 
 @dataclass
@@ -240,7 +281,7 @@ class CollectionUrl:
     url: str
     name: str = ''
     excluded: bool = False
-    tracks: set[str] = field(default_factory=set)
+    tracks: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.excluded, str):
@@ -268,5 +309,12 @@ class CollectionUrl:
 
 
 if __name__ == '__main__':
-    print(TrackSyncAction.DO_NOTHING)
-    #print(MusicSyncLibrary().read_xml('../library.xml').children[0].children[0].update_sync_status())
+    # print(MusicSyncLibrary().read_xml('../library.xml').children[0].children[0].update_sync_status())
+
+
+    info = {
+        'ext': 'mp3',
+        'filepath': 'Mili - TIAN TIAN [Limbus Company] [szyPY8nbBF4].mp3',
+        'track': 'Test'
+    }
+    FFmpegMetadataPP(None).run(info)

@@ -1,5 +1,5 @@
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QItemSelection
+from PySide6.QtCore import Qt, QItemSelection, QEvent
 from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
     QDialogButtonBox, QTreeView
@@ -34,6 +34,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.metadata_table_label.mousePressEvent = self.change_metadata_table
         self.metadata_table_label.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
+
+        self.action_combo_boxes = dict(zip([self.added_combo_box, self.not_downloaded_combo_box, self.removed_combo_box, self.local_combo_box, self.permanent_combo_box, self.downloaded_combo_box],
+                                   [TrackSyncStatus.ADDED_TO_SOURCE, TrackSyncStatus.NOT_DOWNLOADED, TrackSyncStatus.REMOVED_FROM_SOURCE, TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
+        for box, status in self.action_combo_boxes.items():
+            box.setModel(SyncActionComboboxModel(status))
+            box.highlighted[int].connect(lambda index, box=box: self.show_action_item_tip(box, index))
+            box.view().viewport().installEventFilter(self)
+
+    def show_action_item_tip(self, box, index):
+        tip = box.itemData(index, Qt.ItemDataRole.StatusTipRole)
+        self.statusbar.showMessage(tip or '')
+
+    def eventFilter(self, obj, event):
+        for box in self.action_combo_boxes.keys():
+            if obj is box.view().viewport():
+                if event.type() in (QEvent.Type.Leave, QEvent.Type.Hide):
+                    self.statusbar.clearMessage()
+        return super(MainWindow, self).eventFilter(obj, event)
 
     def new_library(self):
         if self.treeView.model().has_changed():
@@ -122,18 +140,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file, selected_collection.sync_bookmark_path, selected_collection.sync_bookmark_title_as_url_name)
 
-            self.added_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.ADDED_TO_SOURCE))
-            self.added_combo_box.setCurrentIndex(self.added_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.ADDED_TO_SOURCE].gui_string))
-            self.not_downloaded_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.NOT_DOWNLOADED))
-            self.not_downloaded_combo_box.setCurrentIndex(self.not_downloaded_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.NOT_DOWNLOADED].gui_string))
-            self.removed_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.REMOVED_FROM_SOURCE))
-            self.removed_combo_box.setCurrentIndex(self.removed_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.REMOVED_FROM_SOURCE].gui_string))
-            self.local_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.LOCAL_FILE))
-            self.local_combo_box.setCurrentIndex(self.local_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.LOCAL_FILE].gui_string))
-            self.permanent_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.PERMANENTLY_DOWNLOADED))
-            self.permanent_combo_box.setCurrentIndex(self.permanent_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.PERMANENTLY_DOWNLOADED].gui_string))
-            self.downloaded_combo_box.setModel(SyncActionComboboxModel(TrackSyncStatus.DOWNLOADED))
-            self.downloaded_combo_box.setCurrentIndex(self.downloaded_combo_box.findText(selected_collection.sync_actions[TrackSyncStatus.DOWNLOADED].gui_string))
+            for box, status in self.action_combo_boxes.items():
+                box.setCurrentIndex(box.findText(selected_collection.sync_actions[status].gui_string))
+
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
