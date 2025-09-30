@@ -142,6 +142,9 @@ class LibraryModel(QStandardItemModel):
 
         return self.to_library_object() != self.loaded_library_object
 
+    def dropMimeData(self, data, action, row, column, parent, /):
+        print(data, action, row, column, parent)
+        return False
 
     @staticmethod
     def add_folder(parent: FolderItem):

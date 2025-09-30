@@ -4,11 +4,11 @@ from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
     QDialogButtonBox, QTreeView
 
-from src.gui.bookmark_window import BookmarkWindow
+from src.gui.bookmark_dialog import BookmarkDialog
 from src.gui.main_gui import Ui_MainWindow
 from src.gui.models.library import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
 from src.gui.models.sync_action_combobox import SyncActionComboboxModel
-from src.music_sync_library import TrackSyncStatus, TrackSyncAction
+from src.music_sync_library import TrackSyncStatus
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             elif answer == QMessageBox.Cancel:
                 return
 
-        filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="XML files (*.xml)")
+        filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="XML files (*.xml) (*.xml)")
         if filename:
             self.treeView.setModel(LibraryModel(filename))
             self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
@@ -92,7 +92,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return self.save_library_as()
 
     def save_library_as(self):
-        filename, ok = QFileDialog.getSaveFileName(self, 'Select a file to save to', filter="XML files (*.xml)")
+        filename, ok = QFileDialog.getSaveFileName(self, 'Select a file to save to', filter="XML files (*.xml) (*.xml)")
         if filename:
             if not filename.endswith('.xml'):
                 filename += '.xml'
@@ -214,7 +214,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 bookmark_window.buttonBox.button(QDialogButtonBox.Ok).setEnabled(False)
 
-        bookmark_window = BookmarkWindow()
+        bookmark_window = BookmarkDialog()
         bookmark_window.subfolder_check_box.setEnabled(False)
         bookmark_window.bookmark_tree_widget.setSelectionMode(QTreeWidget.SingleSelection)
         bookmark_window.bookmark_tree_widget.selectionModel().selectionChanged.connect(selection_changed)
@@ -317,7 +317,7 @@ class TreeContextMenu(QMenu):
             self.model.add_url(self.item, url)
 
     def import_from_bookmarks(self):
-        bookmark_window = BookmarkWindow(self.parent)
+        bookmark_window = BookmarkDialog(self.parent)
         if bookmark_window.exec():
             urls = []
 
