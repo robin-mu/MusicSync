@@ -1,35 +1,39 @@
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon
+import typing
+from xml.etree.ElementTree import Element
 
+from PySide6.QtGui import QIcon
+
+from src.gui.models.xml_model import XmlObjectModelItem, XmlObjectModel
 from src.music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl
 
 
-class FolderItem(QStandardItem):
+class FolderItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
         self.setText(kwargs.get('name', ''))
         self.setIcon(QIcon.fromTheme('folder'))
 
     @staticmethod
-    def from_library_object(folder: Folder) -> 'FolderItem':
+    def from_xml_object(folder: Folder) -> 'FolderItem':
         folder_item = FolderItem(**vars(folder))
         for child in folder.children:
             if isinstance(child, Folder):
-                folder_item.appendRow(FolderItem.from_library_object(child))
+                folder_item.appendRow(FolderItem.from_xml_object(child))
             elif isinstance(child, Collection):
-                folder_item.appendRow(CollectionItem.from_library_object(child))
+                folder_item.appendRow(CollectionItem.from_xml_object(child))
 
         return folder_item
 
-    def to_library_object(self) -> Folder:
+    def to_xml_object(self) -> Folder:
         children = []
         for i in range(self.rowCount()):
             child = self.child(i)
-            children.append(child.to_library_object())
+            children.append(child.to_xml_object())
 
         return Folder(name=self.text(), children=children)
 
 
-class CollectionItem(QStandardItem):
+class CollectionItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -48,23 +52,23 @@ class CollectionItem(QStandardItem):
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
 
     @staticmethod
-    def from_library_object(collection: Collection) -> 'CollectionItem':
+    def from_xml_object(collection: Collection) -> 'CollectionItem':
         collection_item = CollectionItem(**vars(collection))
         for url in collection.urls:
-            collection_item.appendRow(CollectionUrlItem.from_library_object(url))
+            collection_item.appendRow(CollectionUrlItem.from_xml_object(url))
 
         return collection_item
 
-    def to_library_object(self) -> Collection:
+    def to_xml_object(self) -> Collection:
         children = []
         for i in range(self.rowCount()):
             child = self.child(i)
-            children.append(child.to_library_object())
+            children.append(child.to_xml_object())
 
         return Collection(name=self.text(), urls=children, **vars(self))
 
 
-class CollectionUrlItem(QStandardItem):
+class CollectionUrlItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
         self.url: str = kwargs['url']
@@ -92,15 +96,39 @@ class CollectionUrlItem(QStandardItem):
         self.setEditable(True)
 
     @staticmethod
-    def from_library_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
+    def from_xml_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
         return CollectionUrlItem(**vars(collection_url))
 
-    def to_library_object(self):
+    def to_xml_object(self):
         name = self.text() if self.text() != self.url else ''
         return CollectionUrl(name=name, **vars(self))
 
 
-class LibraryModel(QStandardItemModel):
+class LibraryModel(XmlObjectModel):
+    @classmethod
+    def item_from_xml(cls, el: Element) -> XmlObjectModelItem:
+        if el.tag == 'Folder':
+            return FolderItem.from_xml_object(Folder.from_xml(el))
+        elif el.tag == 'Collection':
+            return CollectionItem.from_xml_object(Collection.from_xml(el))
+        elif el.tag == 'CollectionUrl':
+            return CollectionUrlItem.from_xml_object(CollectionUrl.from_xml(el))
+
+        raise ValueError(f'Unknown tag {el.tag}')
+
+    @classmethod
+    def validate_drop(cls, parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
+        if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
+            return False
+
+        if isinstance(parent_item, CollectionItem) and (isinstance(item, FolderItem) or isinstance(item, CollectionItem)):
+            return False
+
+        if isinstance(parent_item, CollectionUrlItem):
+            return False
+
+        return True
+
     def __init__(self, xml_path: str=None):
         super(LibraryModel, self).__init__()
 
@@ -115,21 +143,21 @@ class LibraryModel(QStandardItemModel):
 
             for child in self.loaded_library_object.children:
                 if isinstance(child, Folder):
-                    self.root.appendRow(FolderItem.from_library_object(child))
+                    self.root.appendRow(FolderItem.from_xml_object(child))
                 elif isinstance(child, Collection):
-                    self.root.appendRow(CollectionItem.from_library_object(child))
+                    self.root.appendRow(CollectionItem.from_xml_object(child))
 
-    def to_library_object(self) -> MusicSyncLibrary:
+    def to_xml_object(self) -> MusicSyncLibrary:
         children = []
         for i in range(self.root.rowCount()):
-            row = self.root.child(i)
-            children.append(row.to_library_object())
+            row = typing.cast(XmlObjectModelItem, self.root.child(i))
+            children.append(row.to_xml_object())
         return MusicSyncLibrary(self.metadata_table_path, children)
 
     def to_xml(self, filename=None):
         if filename is None:
             filename = self.path
-        lib_object = self.to_library_object()
+        lib_object = self.to_xml_object()
         self.loaded_library_object = lib_object
         lib_object.write_xml(filename)
 
@@ -140,11 +168,7 @@ class LibraryModel(QStandardItemModel):
         if self.loaded_library_object is None:
             return True
 
-        return self.to_library_object() != self.loaded_library_object
-
-    def dropMimeData(self, data, action, row, column, parent, /):
-        print(data, action, row, column, parent)
-        return False
+        return self.to_xml_object() != self.loaded_library_object
 
     @staticmethod
     def add_folder(parent: FolderItem):

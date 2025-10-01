@@ -12,6 +12,7 @@ from yt_dlp import YoutubeDL
 from yt_dlp.postprocessor import FFmpegMetadataPP
 
 from src.bookmark_library import BookmarkLibrary, BookmarkFolder
+from src.xml_object import XmlObject
 
 
 @dataclass
@@ -44,7 +45,7 @@ class MusicSyncLibrary:
 
 
 @dataclass
-class Folder:
+class Folder(XmlObject):
     name: str
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
 
@@ -144,7 +145,7 @@ class TrackSyncAction(StrEnum):
 
 
 @dataclass
-class Collection:
+class Collection(XmlObject):
     DEFAULT_SYNC_ACTIONS: ClassVar[dict[TrackSyncStatus, TrackSyncAction]] = {
         TrackSyncStatus.ADDED_TO_SOURCE: TrackSyncAction.DOWNLOAD,
         TrackSyncStatus.NOT_DOWNLOADED: TrackSyncAction.DOWNLOAD,
@@ -277,7 +278,7 @@ class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
 
 
 @dataclass
-class CollectionUrl:
+class CollectionUrl(XmlObject):
     url: str
     name: str = ''
     excluded: bool = False
