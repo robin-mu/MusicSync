@@ -21,12 +21,11 @@ class BookmarkFolder:
     title: str
     children: dict[str, Union['Bookmark', 'BookmarkFolder']] = field(default_factory=dict, repr=False)
 
-    @staticmethod
-    def flatten(folder: 'BookmarkFolder') -> dict[str, 'Bookmark']:
+    def get_all_bookmarks(self) -> dict[str, 'Bookmark']:
         flattened = {}
-        for child in folder.children.values():
+        for child in self.children.values():
             if isinstance(child, BookmarkFolder):
-                flattened.update(BookmarkFolder.flatten(child))
+                flattened.update(child.get_all_bookmarks())
             elif isinstance(child, Bookmark):
                 flattened[child.id] = child
 

@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QItemSelection, QEvent
 from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
@@ -6,9 +8,10 @@ from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInp
 
 from src.gui.bookmark_dialog import BookmarkDialog
 from src.gui.main_gui import Ui_MainWindow
-from src.gui.models.library import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
-from src.gui.models.sync_action_combobox import SyncActionComboboxModel
-from src.music_sync_library import TrackSyncStatus
+from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
+from src.gui.models.library_model import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
+from src.gui.models.sync_action_combobox_model import SyncActionComboboxModel
+from src.music_sync_library import TrackSyncStatus, Collection
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -31,6 +34,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_save.pressed.connect(self.save_settings)
         self.settings_sync_button.pressed.connect(self.change_sync_folder)
         self.settings_stop_sync_button.pressed.connect(lambda: self.update_current_sync_folder(''))
+        self.settings_edit_metadata_button.pressed.connect(self.edit_metadata_suggestions)
 
         self.metadata_table_label.mousePressEvent = self.change_metadata_table
         self.metadata_table_label.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
@@ -181,11 +185,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if folder:
             self.settings_folder_path.setText(folder)
 
-    def update_current_sync_folder(self, file: str, path: list[tuple[str, str]]=None, set_url_name=False):
+    def get_selected_collection(self) -> CollectionItem:
         current_collection = self.treeView.model().itemFromIndex(self.treeView.selectedIndexes()[0])
         if isinstance(current_collection, CollectionUrlItem):
             current_collection = current_collection.parent()
+        return current_collection
 
+
+    def update_current_sync_folder(self, file: str, path: list[tuple[str, str]]=None, set_url_name=False):
+        current_collection = self.get_selected_collection()
         current_collection.sync_bookmark_file = file
         current_collection.sync_bookmark_path = path or []
         current_collection.sync_bookmark_title_as_url_name = set_url_name
@@ -228,6 +236,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 idx = idx.parent()
 
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
+
+    def edit_metadata_suggestions(self):
+        metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(self.get_selected_collection().metadata_suggestions), parent=self)
+
+        if metadata_suggestions_dialog.exec():
+            self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.columns_table.model().columns
 
     def update_metadata_table_label(self, path=''):
         if path:

@@ -1,5 +1,5 @@
-from pprint import pprint
 import xml.etree.ElementTree as et
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import auto, StrEnum
 from pprint import pprint
@@ -11,7 +11,7 @@ import yt_dlp
 from yt_dlp import YoutubeDL
 from yt_dlp.postprocessor import FFmpegMetadataPP
 
-from src.bookmark_library import BookmarkLibrary, BookmarkFolder
+from src.bookmark_library import BookmarkLibrary
 from src.xml_object import XmlObject
 
 
@@ -143,6 +143,71 @@ class TrackSyncAction(StrEnum):
     def gui_status_tip(self) -> str:
         return self._gui_status_tip
 
+@dataclass
+class MetadataColumn(XmlObject):
+    name: str
+    suggestions: list['MetadataSuggestion']
+    show_format_options: bool = False
+    default_format_as_title: bool = False
+    default_remove_brackets: bool = False
+
+    def __post_init__(self):
+        if isinstance(self.show_format_options, str):
+            self.show_format_options = self.show_format_options == 'True'
+        if isinstance(self.default_format_as_title, str):
+            self.default_format_as_title = self.default_format_as_title == 'True'
+        if isinstance(self.default_remove_brackets, str):
+            self.default_remove_brackets = self.default_remove_brackets == 'True'
+
+    def to_row(self):
+        return [self.name, self.show_format_options, self.default_format_as_title, self.default_remove_brackets]
+
+    def set_from_column(self, column: int, value):
+        if column == 0:
+            self.name = value
+        elif column == 1:
+            self.show_format_options = value
+        elif column == 2:
+            self.default_format_as_title = value
+        elif column == 3:
+            self.default_remove_brackets = value
+
+    @staticmethod
+    def from_xml(el: Element) -> 'XmlObject':
+        suggestions = []
+        for child in el:
+            suggestions.append(MetadataSuggestion.from_xml(child))
+
+        return MetadataColumn(**(el.attrib | {'suggestions': suggestions}))
+
+
+    def to_xml(self) -> Element:
+        attrs = vars(self).copy()
+        attrs.pop('suggestions')
+        attrs['show_format_options'] = str(self.show_format_options)
+        attrs['default_format_as_title'] = str(self.default_format_as_title)
+        attrs['default_remove_brackets'] = str(self.default_remove_brackets)
+
+        el = et.Element('MetadataColumn', **attrs)
+        for suggestion in self.suggestions:
+            el.append(suggestion.to_xml())
+        return el
+
+
+@dataclass
+class MetadataSuggestion(XmlObject):
+    pattern_from: str
+    pattern_to: str = ''
+    split_separators: str = ''
+    split_slice: str = ''
+
+    @staticmethod
+    def from_xml(el: Element) -> 'XmlObject':
+        return MetadataSuggestion(**el.attrib)
+
+    def to_xml(self) -> et.Element:
+        return et.Element('MetadataSuggestion', **vars(self))
+
 
 @dataclass
 class Collection(XmlObject):
@@ -154,6 +219,37 @@ class Collection(XmlObject):
         TrackSyncStatus.PERMANENTLY_DOWNLOADED: TrackSyncAction.DO_NOTHING,
         TrackSyncStatus.DOWNLOADED: TrackSyncAction.DO_NOTHING,
     }
+
+    # field for suggestion from yt_dlp's metadata with name "field"
+    # 0_field for suggestion from this table column with name "field"
+    # 1_field for suggestion from external table column with name "field"
+    DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataColumn']] = [
+            MetadataColumn('title', suggestions=[
+                MetadataSuggestion('0_title'),
+                MetadataSuggestion('track'),
+                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
+                MetadataSuggestion('title', '["“](?P<>.+)["“]'),
+                MetadataSuggestion('title')
+            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+            MetadataColumn('artist', suggestions=[
+                MetadataSuggestion('0_artist'),
+                MetadataSuggestion('artist', split_separators=r'\,'),
+                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙',),
+                MetadataSuggestion('title', ' by (?P<>.+)'),
+                MetadataSuggestion('channel'),
+                MetadataSuggestion('title')
+            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+            MetadataColumn('album', suggestions=[
+                MetadataSuggestion('0_album'),
+                MetadataSuggestion('album'),
+                MetadataSuggestion('playlist'),
+            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+            MetadataColumn('track', suggestions=[
+                MetadataSuggestion('0_track'),
+                MetadataSuggestion('track'),
+                MetadataSuggestion('playlist_index'),
+            ])
+        ]
 
     name: str
     folder_path: str = ''
@@ -168,6 +264,7 @@ class Collection(XmlObject):
     exclude_after_download: bool = False
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(
         default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
+    metadata_suggestions: list['MetadataColumn'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -191,6 +288,10 @@ class Collection(XmlObject):
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':
                 kwargs['urls'].append(CollectionUrl.from_xml(child))
+            elif child.tag == 'MetadataSuggestions':
+                kwargs['metadata_suggestions'] = []
+                for column in child:
+                    kwargs['metadata_suggestions'].append(MetadataColumn.from_xml(column))
 
         return Collection(**(kwargs | el.attrib))
 
@@ -201,6 +302,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_path')
         attrs.pop('sync_bookmark_title_as_url_name')
         attrs.pop('sync_actions')
+        attrs.pop('metadata_suggestions')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
         attrs['exclude_after_download'] = str(self.exclude_after_download)
 
@@ -214,6 +316,13 @@ class Collection(XmlObject):
 
         if self.sync_actions != Collection.DEFAULT_SYNC_ACTIONS:
             el.append(et.Element('SyncActions', **self.sync_actions))
+
+        if self.metadata_suggestions != Collection.DEFAULT_METADATA_SUGGESTIONS:
+            suggestions = et.Element('MetadataSuggestions')
+            for suggestion in self.metadata_suggestions:
+                suggestions.append(suggestion.to_xml())
+            el.append(suggestions)
+
         for url in self.urls:
             el.append(url.to_xml())
         return el
@@ -222,9 +331,8 @@ class Collection(XmlObject):
         # updating collection urls if sync with bookmarks is enabled
         if self.sync_bookmark_file:
             bookmarks = BookmarkLibrary.create_from_path(self.sync_bookmark_file)
-            folder = bookmarks.go_to_path([e[0] for e in self.sync_bookmark_path])
-            flattened = BookmarkFolder.flatten(folder)
-            for child in flattened.values():
+            folder = bookmarks.go_to_path([e[0] for e in self.sync_bookmark_path]).get_all_bookmarks()
+            for child in folder.values():
                 if child.url not in self.urls:
                     self.urls.append(CollectionUrl(url=child.url,
                                                    name=child.bookmark_title if self.sync_bookmark_title_as_url_name else ''))
@@ -265,6 +373,7 @@ class Collection(XmlObject):
 
             info = ydl.process_ie_result(info, download=True)
             pprint(info)
+
 
 class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
     # set 1:1 album cover to be embedded (only for yt-music)
