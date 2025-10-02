@@ -241,7 +241,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(self.get_selected_collection().metadata_suggestions), parent=self)
 
         if metadata_suggestions_dialog.exec():
-            self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.columns_table.model().columns
+            self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.columns_table.model().fields
 
     def update_metadata_table_label(self, path=''):
         if path:

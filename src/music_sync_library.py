@@ -144,7 +144,7 @@ class TrackSyncAction(StrEnum):
         return self._gui_status_tip
 
 @dataclass
-class MetadataColumn(XmlObject):
+class MetadataField(XmlObject):
     name: str
     suggestions: list['MetadataSuggestion']
     show_format_options: bool = False
@@ -178,7 +178,7 @@ class MetadataColumn(XmlObject):
         for child in el:
             suggestions.append(MetadataSuggestion.from_xml(child))
 
-        return MetadataColumn(**(el.attrib | {'suggestions': suggestions}))
+        return MetadataField(**(el.attrib | {'suggestions': suggestions}))
 
 
     def to_xml(self) -> Element:
@@ -223,15 +223,15 @@ class Collection(XmlObject):
     # field for suggestion from yt_dlp's metadata with name "field"
     # 0_field for suggestion from this table column with name "field"
     # 1_field for suggestion from external table column with name "field"
-    DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataColumn']] = [
-            MetadataColumn('title', suggestions=[
+    DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataField']] = [
+            MetadataField('title', suggestions=[
                 MetadataSuggestion('0_title'),
                 MetadataSuggestion('track'),
                 MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
                 MetadataSuggestion('title', '["“](?P<>.+)["“]'),
                 MetadataSuggestion('title')
             ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataColumn('artist', suggestions=[
+            MetadataField('artist', suggestions=[
                 MetadataSuggestion('0_artist'),
                 MetadataSuggestion('artist', split_separators=r'\,'),
                 MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙',),
@@ -239,12 +239,12 @@ class Collection(XmlObject):
                 MetadataSuggestion('channel'),
                 MetadataSuggestion('title')
             ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataColumn('album', suggestions=[
+            MetadataField('album', suggestions=[
                 MetadataSuggestion('0_album'),
                 MetadataSuggestion('album'),
                 MetadataSuggestion('playlist'),
             ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataColumn('track', suggestions=[
+            MetadataField('track', suggestions=[
                 MetadataSuggestion('0_track'),
                 MetadataSuggestion('track'),
                 MetadataSuggestion('playlist_index'),
@@ -264,7 +264,8 @@ class Collection(XmlObject):
     exclude_after_download: bool = False
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(
         default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
-    metadata_suggestions: list['MetadataColumn'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
+    metadata_suggestions: list[
+        'MetadataField'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -291,7 +292,7 @@ class Collection(XmlObject):
             elif child.tag == 'MetadataSuggestions':
                 kwargs['metadata_suggestions'] = []
                 for column in child:
-                    kwargs['metadata_suggestions'].append(MetadataColumn.from_xml(column))
+                    kwargs['metadata_suggestions'].append(MetadataField.from_xml(column))
 
         return Collection(**(kwargs | el.attrib))
 
