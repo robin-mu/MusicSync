@@ -1,16 +1,33 @@
 from enum import IntEnum
+from typing import Any
 
+from PyQt6.QtCore import QModelIndex
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QCheckBox
 
 from src.music_sync_library import MetadataField
 
 
-class MetadataFieldsTableColumns(IntEnum):
-    NAME = 0
-    SHOW_FORMAT_OPTIONS = 1
-    DEFAULT_FORMAT_AS_TITLE = 2
-    DEFAULT_REMOVE_BRACKETS = 3
+class MetadataFieldsTableColumn(IntEnum):
+    ENABLED = 0
+    NAME = 1
+    SHOW_FORMAT_OPTIONS = 2
+    DEFAULT_FORMAT_AS_TITLE = 3
+    DEFAULT_REMOVE_BRACKETS = 4
+
+    def __str__(self):
+        if self == MetadataFieldsTableColumn.NAME:
+            return 'Name'
+        if self == MetadataFieldsTableColumn.ENABLED:
+            return 'Enabled'
+        if self == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
+            return 'Show format \noptions'
+        if self == MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
+            return 'Default for format \noption "Format as title"'
+        if self == MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS:
+            return 'Default for format \noption "Remove brackets"'
+        return None
+
 
 
 class MetadataFieldsModel(QtCore.QAbstractTableModel):
@@ -19,51 +36,90 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
 
         self.parent = parent
         self.fields = fields
+        self.sort_order = QtCore.Qt.SortOrder.AscendingOrder
 
     def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()):
         return len(self.fields)
 
     def columnCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()):
-        return len(MetadataFieldsTableColumns.__members__)
+        return len(MetadataFieldsTableColumn.__members__)
 
     def data(self, index, /, role = QtCore.Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
 
-        data = self.fields[index.row()].to_row()[index.column()]
+        data = MetadataFieldsModel.field_to_row(self.fields[index.row()])[index.column()]
         if role == QtCore.Qt.ItemDataRole.BackgroundRole:
             return data
 
-        if role == QtCore.Qt.ItemDataRole.DisplayRole and index.column() == MetadataFieldsTableColumns.NAME:
+        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole] and index.column() == MetadataFieldsTableColumn.NAME:
             return data
 
         return None
 
     def headerData(self, section, orientation, /, role = ...):
         if role == QtCore.Qt.ItemDataRole.DisplayRole and orientation == QtCore.Qt.Orientation.Horizontal:
-            if section == MetadataFieldsTableColumns.NAME:
-                return 'Name'
-            if section == MetadataFieldsTableColumns.SHOW_FORMAT_OPTIONS:
-                return 'Show format \noptions'
-            if section == MetadataFieldsTableColumns.DEFAULT_FORMAT_AS_TITLE:
-                return 'Default for format \noption "Format as title"'
-            if section == MetadataFieldsTableColumns.DEFAULT_REMOVE_BRACKETS:
-                return 'Default for format \noption "Remove brackets"'
+            return str(MetadataFieldsTableColumn(section))
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):
         if index.isValid():
-            self.fields[index.row()].set_from_column(index.column(), value)
-            if index.column() == MetadataFieldsTableColumns.SHOW_FORMAT_OPTIONS:
-                self.parent.columns_table.itemDelegateForColumn(2).refresh_editor()
-                self.parent.columns_table.itemDelegateForColumn(3).refresh_editor()
+            self.set_field_from_index(index, value)
+            if index.column() in [MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.ENABLED]:
+                self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS).refresh_editor()
+                self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE).refresh_editor()
+                self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS).refresh_editor()
             return True
 
         return False
 
     def flags(self, index):
-        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEnabled
+        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
 
+    def sort(self, column, /, order = None):
+        if order is None:
+            order = self.sort_order
+        if column == MetadataFieldsTableColumn.ENABLED:
+            self.layoutAboutToBeChanged.emit()
+
+            self.fields = sorted(self.fields, key=lambda field: field.name)
+            self.fields = sorted(self.fields, key=lambda field: int(field.enabled), reverse=order == QtCore.Qt.SortOrder.DescendingOrder)
+
+            self.parent.fields_table.itemDelegateForColumn(
+                MetadataFieldsTableColumn.ENABLED).refresh_editor()
+            self.parent.fields_table.itemDelegateForColumn(
+                MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS).refresh_editor()
+            self.parent.fields_table.itemDelegateForColumn(
+                MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE).refresh_editor()
+            self.parent.fields_table.itemDelegateForColumn(
+                MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS).refresh_editor()
+
+            self.layoutChanged.emit()
+            self.sort_order = order
+
+    @staticmethod
+    def field_to_row(field: MetadataField) -> dict[int, Any]:
+        return {
+            MetadataFieldsTableColumn.ENABLED: field.enabled,
+            MetadataFieldsTableColumn.NAME: field.name,
+            MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS: field.show_format_options,
+            MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE: field.default_format_as_title,
+            MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS: field.default_remove_brackets
+        }
+
+    def set_field_from_index(self, index: QModelIndex, value: Any):
+        field = self.fields[index.row()]
+        column = index.column()
+        if column == MetadataFieldsTableColumn.ENABLED:
+            field.enabled = value
+        elif column == MetadataFieldsTableColumn.NAME:
+            field.name = value
+        elif column == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
+            field.show_format_options = value
+        elif column == MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
+            field.default_format_as_title = value
+        elif column == MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS:
+            field.default_remove_brackets = value
 
 class CheckboxDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent=None):
@@ -85,9 +141,17 @@ class CheckboxDelegate(QtWidgets.QStyledItemDelegate):
     def _refresh(self, editor: QCheckBox, index):
         editor.blockSignals(True)
         editor.setChecked(index.model().data(index, role=QtCore.Qt.ItemDataRole.BackgroundRole))
-        if index.column() >= MetadataFieldsTableColumns.DEFAULT_FORMAT_AS_TITLE:
-            format_options_index = index.model().index(index.row(), MetadataFieldsTableColumns.SHOW_FORMAT_OPTIONS)
-            editor.setEnabled(index.model().data(format_options_index, role=QtCore.Qt.ItemDataRole.BackgroundRole))
+
+        enabled_index = index.model().index(index.row(), MetadataFieldsTableColumn.ENABLED)
+        format_options_index = index.model().index(index.row(), MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS)
+        enabled = index.model().data(enabled_index, role=QtCore.Qt.ItemDataRole.BackgroundRole)
+        format_options = index.model().data(format_options_index, role=QtCore.Qt.ItemDataRole.BackgroundRole)
+
+        if index.column() == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
+            editor.setEnabled(enabled)
+        elif index.column() >= MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
+            editor.setEnabled(enabled and format_options)
+
         editor.blockSignals(False)
 
     def setModelData(self, editor: QCheckBox, model, index):

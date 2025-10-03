@@ -147,6 +147,7 @@ class TrackSyncAction(StrEnum):
 class MetadataField(XmlObject):
     name: str
     suggestions: list['MetadataSuggestion']
+    enabled: bool = True
     show_format_options: bool = False
     default_format_as_title: bool = False
     default_remove_brackets: bool = False
@@ -158,19 +159,6 @@ class MetadataField(XmlObject):
             self.default_format_as_title = self.default_format_as_title == 'True'
         if isinstance(self.default_remove_brackets, str):
             self.default_remove_brackets = self.default_remove_brackets == 'True'
-
-    def to_row(self):
-        return [self.name, self.show_format_options, self.default_format_as_title, self.default_remove_brackets]
-
-    def set_from_column(self, column: int, value):
-        if column == 0:
-            self.name = value
-        elif column == 1:
-            self.show_format_options = value
-        elif column == 2:
-            self.default_format_as_title = value
-        elif column == 3:
-            self.default_remove_brackets = value
 
     @staticmethod
     def from_xml(el: Element) -> 'XmlObject':

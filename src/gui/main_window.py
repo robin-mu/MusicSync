@@ -19,7 +19,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
-        self.treeView.setModel(LibraryModel())
+        self.treeView.setModel(LibraryModel('/home/robin/Desktop/Music-Sync/a.xml'))
+        self.treeView.expandAll()
+
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
         self.treeView.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.treeView, point))
@@ -45,6 +47,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             box.setModel(SyncActionComboboxModel(status))
             box.highlighted[int].connect(lambda index, box=box: self.show_action_item_tip(box, index))
             box.view().viewport().installEventFilter(self)
+
+
 
     def show_action_item_tip(self, box, index):
         tip = box.itemData(index, Qt.ItemDataRole.StatusTipRole)
@@ -241,7 +245,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(self.get_selected_collection().metadata_suggestions), parent=self)
 
         if metadata_suggestions_dialog.exec():
-            self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.columns_table.model().fields
+            self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.fields_table.model().fields
 
     def update_metadata_table_label(self, path=''):
         if path:
