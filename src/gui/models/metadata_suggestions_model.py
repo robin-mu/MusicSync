@@ -1,8 +1,9 @@
 from enum import IntEnum
 from typing import Any
+from xml.etree import ElementTree
 
 from PySide6 import QtCore
-from PySide6.QtCore import QModelIndex, QAbstractTableModel
+from PySide6.QtCore import QModelIndex, QAbstractTableModel, QMimeData
 
 from src.music_sync_library import MetadataSuggestion
 
@@ -41,7 +42,7 @@ class MetadataSuggestionsModel(QAbstractTableModel):
         if not index.isValid():
             return None
 
-        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole]:
+        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole, QtCore.Qt.ItemDataRole]:
             return MetadataSuggestionsModel.suggestion_to_row(self.suggestions[index.row()])[index.column()]
         else:
             return None
@@ -52,7 +53,8 @@ class MetadataSuggestionsModel(QAbstractTableModel):
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):
-        print(index.row(), index.column(), value, role)
+        if role != QtCore.Qt.ItemDataRole.EditRole:
+            return False
         if index.isValid():
             self.set_field_from_index(index, value)
             return True
@@ -60,7 +62,48 @@ class MetadataSuggestionsModel(QAbstractTableModel):
         return False
 
     def flags(self, index):
-        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+        return (QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEnabled |
+                QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsDragEnabled |
+                QtCore.Qt.ItemFlag.ItemIsDropEnabled)
+
+    def supportedDropActions(self):
+        return QtCore.Qt.DropAction.MoveAction
+
+    def mimeTypes(self, /):
+        return ['application/xml']
+
+    def mimeData(self, indexes):
+        if not indexes:
+            return None
+
+        item = self.suggestions[indexes[0].row()]
+        mime_data = QtCore.QMimeData()
+        mime_data.setData('application/xml', ElementTree.tostring(item.to_xml()))
+        return mime_data
+
+    def dropMimeData(self, data, action, row, column, parent, /):
+        if not data.hasFormat('application/xml'):
+            return False
+
+        dst_row = parent.row()
+        if dst_row == -1:
+            dst_row = self.rowCount()
+
+        xml_data = ElementTree.fromstring(data.data('application/xml').data())
+        item = MetadataSuggestion.from_xml(xml_data)
+
+        src_row = self.parent.suggestions_table.selectedIndexes()[0].row()
+
+        begin_dst = dst_row + int(dst_row > src_row)
+
+        self.beginMoveRows(QtCore.QModelIndex(), src_row, src_row, QtCore.QModelIndex(), begin_dst)
+        self.suggestions.pop(src_row)
+        if dst_row > src_row:
+            dst_row -= 1
+        self.suggestions.insert(dst_row, item)
+        self.endMoveRows()
+
+        return True
 
     @staticmethod
     def suggestion_to_row(suggestion: MetadataSuggestion) -> dict[int, Any]:
@@ -82,3 +125,11 @@ class MetadataSuggestionsModel(QAbstractTableModel):
             suggestion.split_separators = value
         elif column == MetadataSuggestionsTableColumn.SLICE:
             suggestion.split_slice = value
+
+    def relocateRow(self, from_index: int, to_index: int):
+        row_last = max(from_index, to_index)
+        row_first = min(from_index, to_index)
+
+        #self.beginMoveRows(QtCore.QModelIndex(), row_last, row_last, QtCore.QModelIndex(), row_first)
+        #self.suggestions.insert(to_index, self.suggestions.pop(from_index))
+        #self.endMoveRows()

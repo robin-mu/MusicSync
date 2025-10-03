@@ -1,5 +1,7 @@
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import QItemSelection
+from PySide6.QtGui import QDropEvent
+from PySide6.QtWidgets import QStyle, QTableView
 
 from src.gui.metadata_suggestions_gui import Ui_Dialog
 from src.gui.models.metadata_fields_model import MetadataFieldsModel, CheckboxDelegate, MetadataFieldsTableColumn
@@ -28,6 +30,8 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
         self.field_add_button.pressed.connect(self.add_field)
         self.field_remove_button.pressed.connect(self.remove_field)
 
+        self.suggestions_table.setStyle(MetadataSuggestionsTableStyle())
+
     def add_field(self):
         self.fields_table.model().layoutAboutToBeChanged.emit()
         self.fields_table.model().fields.append(MetadataField('', []))
@@ -51,3 +55,9 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
         self.selected_field_label.setText(self.selected_field_label.text().split(':')[0] + ': ' + field.name)
         self.suggestions_table.setModel(MetadataSuggestionsModel(field.suggestions, parent=self))
         self.suggestions_table.resizeColumnsToContents()
+
+class MetadataSuggestionsTableStyle(QtWidgets.QProxyStyle):
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element == QStyle.PrimitiveElement.PE_IndicatorItemViewItemDrop and not option.rect.isNull():
+            option.rect.setHeight(1)
+        super().drawPrimitive(element, option, painter, widget)

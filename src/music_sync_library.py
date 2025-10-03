@@ -153,6 +153,8 @@ class MetadataField(XmlObject):
     default_remove_brackets: bool = False
 
     def __post_init__(self):
+        if isinstance(self.enabled, str):
+            self.enabled = self.enabled == 'True'
         if isinstance(self.show_format_options, str):
             self.show_format_options = self.show_format_options == 'True'
         if isinstance(self.default_format_as_title, str):
@@ -172,6 +174,7 @@ class MetadataField(XmlObject):
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
         attrs.pop('suggestions')
+        attrs['enabled'] = str(self.enabled)
         attrs['show_format_options'] = str(self.show_format_options)
         attrs['default_format_as_title'] = str(self.default_format_as_title)
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
@@ -190,7 +193,7 @@ class MetadataSuggestion(XmlObject):
     split_slice: str = ''
 
     @staticmethod
-    def from_xml(el: Element) -> 'XmlObject':
+    def from_xml(el: Element) -> 'MetadataSuggestion':
         return MetadataSuggestion(**el.attrib)
 
     def to_xml(self) -> et.Element:
