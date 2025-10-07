@@ -1,17 +1,17 @@
 from copy import deepcopy
 
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QItemSelection, QEvent
-from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
+from PySide6.QtCore import Qt, QItemSelection, QEvent, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QDesktopServices
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
-    QDialogButtonBox, QTreeView
+    QDialogButtonBox, QTreeView, QApplication
 
 from src.gui.bookmark_dialog import BookmarkDialog
 from src.gui.main_gui import Ui_MainWindow
 from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
 from src.gui.models.library_model import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
 from src.gui.models.sync_action_combobox_model import SyncActionComboboxModel
-from src.music_sync_library import TrackSyncStatus, Collection, ExternalMetadataTable
+from src.music_sync_library import TrackSyncStatus, ExternalMetadataTable
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -23,7 +23,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.treeView.expandAll()
 
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
-        self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.treeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.treeView.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.treeView, point))
 
         self.actionNew_library.triggered.connect(self.new_library)
@@ -39,7 +39,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_edit_metadata_button.pressed.connect(self.edit_metadata_suggestions)
 
         self.metadata_table_label.mousePressEvent = self.change_metadata_table
-        self.metadata_table_label.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
 
         self.action_combo_boxes = dict(zip([self.added_combo_box, self.not_downloaded_combo_box, self.removed_combo_box, self.local_combo_box, self.permanent_combo_box, self.downloaded_combo_box],
                                    [TrackSyncStatus.ADDED_TO_SOURCE, TrackSyncStatus.NOT_DOWNLOADED, TrackSyncStatus.REMOVED_FROM_SOURCE, TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
@@ -48,6 +47,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             box.highlighted[int].connect(lambda index, box=box: self.show_action_item_tip(box, index))
             box.view().viewport().installEventFilter(self)
 
+        self.settings_filename_format_label.mousePressEvent = self.open_doc_url
+
+
+    @staticmethod
+    def open_doc_url(*_):
+        if QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier:
+            QDesktopServices.openUrl(QUrl('https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#output-template'))
 
 
     def show_action_item_tip(self, box, index):
@@ -63,12 +69,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def new_library(self):
         if self.treeView.model().has_changed():
-            answer = QMessageBox.question(self, 'Save File', 'The current file has not been saved yet. Do you want to save it?', QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            answer = QMessageBox.question(self, 'Save File', 'The current file has not been saved yet. Do you want to save it?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
 
-            if answer == QMessageBox.Yes:
+            if answer == QMessageBox.StandardButton.Yes:
                 if not self.save_library():
                     return
-            elif answer == QMessageBox.Cancel:
+            elif answer == QMessageBox.StandardButton.Cancel:
                 return
 
         self.treeView.setModel(LibraryModel())
@@ -77,12 +83,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def open_library(self):
         if self.treeView.model().has_changed():
-            answer = QMessageBox.question(self, 'Save Library', 'The current library has not been saved yet. Do you want to save it?', QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            answer = QMessageBox.question(self, 'Save Library', 'The current library has not been saved yet. Do you want to save it?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
 
-            if answer == QMessageBox.Yes:
+            if answer == QMessageBox.StandardButton.Yes:
                 if not self.save_library():
                     return
-            elif answer == QMessageBox.Cancel:
+            elif answer == QMessageBox.StandardButton.Cancel:
                 return
 
         filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="XML files (*.xml) (*.xml)")
@@ -110,7 +116,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return True
         return False
 
-    def change_metadata_table(self, *args):
+    def change_metadata_table(self, *_):
         dialog = QFileDialog(self)
         dialog.setWindowTitle('Select a metadata table to associate this library with')
         dialog.setNameFilter('CSV files (*.csv)')
@@ -223,13 +229,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def change_sync_folder(self):
         def selection_changed(selected: QItemSelection, _: QItemSelection):
             if bookmark_window.bookmark_tree_widget.itemFromIndex(selected.indexes()[0]).text(2) == '':
-                bookmark_window.buttonBox.button(QDialogButtonBox.Ok).setEnabled(True)
+                bookmark_window.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
             else:
-                bookmark_window.buttonBox.button(QDialogButtonBox.Ok).setEnabled(False)
+                bookmark_window.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
 
         bookmark_window = BookmarkDialog()
         bookmark_window.subfolder_check_box.setEnabled(False)
-        bookmark_window.bookmark_tree_widget.setSelectionMode(QTreeWidget.SingleSelection)
+        bookmark_window.bookmark_tree_widget.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         bookmark_window.bookmark_tree_widget.selectionModel().selectionChanged.connect(selection_changed)
 
         if bookmark_window.exec() and bookmark_window.bookmark_tree_widget.selectedItems():
@@ -271,16 +277,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.treeView.model().has_changed():
             answer = QMessageBox.question(self, 'Save Library',
                                           'The current library has not been saved yet. Do you want to save it?',
-                                          QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
 
-            if answer == QMessageBox.Yes:
+            if answer == QMessageBox.StandardButton.Yes:
                 if self.save_library():
                     event.accept()
                 else:
                     event.ignore()
-            elif answer == QMessageBox.Cancel:
+            elif answer == QMessageBox.StandardButton.Cancel:
                 event.ignore()
-            elif answer == QMessageBox.No:
+            elif answer == QMessageBox.StandardButton.No:
                 event.accept()
 
 class TreeContextMenu(QMenu):

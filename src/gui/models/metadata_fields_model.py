@@ -5,7 +5,6 @@ from PyQt6.QtCore import QModelIndex
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QCheckBox
 
-from src.gui.models.metadata_suggestions_model import MetadataSuggestionsTableColumn
 from src.music_sync_library import MetadataField
 
 
@@ -154,7 +153,8 @@ class CheckboxDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor: QCheckBox, index):
         self._refresh(editor, index)
 
-    def _refresh(self, editor: QCheckBox, index):
+    @staticmethod
+    def _refresh(editor: QCheckBox, index):
         editor.blockSignals(True)
         editor.setChecked(index.model().data(index, role=QtCore.Qt.ItemDataRole.BackgroundRole))
 
