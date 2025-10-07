@@ -11,18 +11,45 @@ from src.music_sync_library import MetadataSuggestion
 class MetadataSuggestionsTableColumn(IntEnum):
     FROM = 0
     TO = 1
-    SPLIT = 2
-    SLICE = 3
+    REPLACE_REGEX = 2
+    REPLACE_WITH = 3
+    SPLIT = 4
+    SLICE = 5
 
     def __str__(self):
         if self == MetadataSuggestionsTableColumn.FROM:
-            return 'From'
+            return 'Format'
         if self == MetadataSuggestionsTableColumn.TO:
-            return 'To'
+            return 'Filter'
+        if self == MetadataSuggestionsTableColumn.REPLACE_REGEX:
+            return 'Replace'
+        if self == MetadataSuggestionsTableColumn.REPLACE_WITH:
+            return 'Replace with'
         if self == MetadataSuggestionsTableColumn.SPLIT:
             return 'Split at'
         if self == MetadataSuggestionsTableColumn.SLICE:
             return 'Index/Slice'
+        return None
+
+    def tool_tip(self):
+        if self == MetadataSuggestionsTableColumn.FROM:
+            return 'Format string to generate the suggestion from. Syntax is the same as FROM in yt-dlp\'s --parse-metadata (ctrl+click to view documentation)'
+        if self == MetadataSuggestionsTableColumn.TO:
+            return 'Regex to filter the format string. Similar to TO in yt-dlp\'s --parse-metadata, but only the first capture group will be kept (ctrl+click to view documentation)'
+        if self == MetadataSuggestionsTableColumn.REPLACE_REGEX:
+            return 'Regex to replace in the filtered string. Same as REGEX in yt-dlp\'s --replace-in-metadata (ctrl+click to view documentation)'
+        if self == MetadataSuggestionsTableColumn.REPLACE_WITH:
+            return 'Format string to replace the regex with. Same as REPLACE in yt-dlp\'s --replace-in-metadata, but the string may also be formatted like FROM in --parse-metadata (ctrl+click to view documentation)'
+        if self == MetadataSuggestionsTableColumn.SPLIT:
+            return r'Comma-separated list of separators along each of which the resulting string will be split. Every split entry will become one suggestion. A comma inside a separator has to be escaped like \,'
+        if self == MetadataSuggestionsTableColumn.SLICE:
+            return 'Index or python slice to process the resulting split'
+        return None
+
+    def doc_url(self):
+        if self in (MetadataSuggestionsTableColumn.FROM, MetadataSuggestionsTableColumn.TO,
+                    MetadataSuggestionsTableColumn.REPLACE_REGEX, MetadataSuggestionsTableColumn.REPLACE_WITH):
+            return 'https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#modifying-metadata'
         return None
 
 class MetadataSuggestionsModel(QAbstractTableModel):
@@ -50,6 +77,8 @@ class MetadataSuggestionsModel(QAbstractTableModel):
     def headerData(self, section, orientation, /, role=...):
         if role == QtCore.Qt.ItemDataRole.DisplayRole and orientation == QtCore.Qt.Orientation.Horizontal:
             return str(MetadataSuggestionsTableColumn(section))
+        if role == QtCore.Qt.ItemDataRole.ToolTipRole:
+            return MetadataSuggestionsTableColumn(section).tool_tip()
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):
@@ -107,12 +136,9 @@ class MetadataSuggestionsModel(QAbstractTableModel):
 
     @staticmethod
     def suggestion_to_row(suggestion: MetadataSuggestion) -> dict[int, Any]:
-        return {
-            MetadataSuggestionsTableColumn.FROM: suggestion.pattern_from,
-            MetadataSuggestionsTableColumn.TO: suggestion.pattern_to,
-            MetadataSuggestionsTableColumn.SPLIT: suggestion.split_separators,
-            MetadataSuggestionsTableColumn.SLICE: suggestion.split_slice
-        }
+        return dict(zip(MetadataSuggestionsTableColumn.__members__.values(),
+                        [suggestion.pattern_from, suggestion.pattern_to, suggestion.replace_regex,
+                         suggestion.replace_with, suggestion.split_separators, suggestion.split_slice]))
 
     def set_field_from_index(self, index: QModelIndex, value: Any):
         suggestion = self.suggestions[index.row()]

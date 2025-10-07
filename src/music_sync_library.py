@@ -8,7 +8,7 @@ from xml.etree.ElementTree import Element
 
 import pandas as pd
 import yt_dlp
-from yt_dlp import YoutubeDL
+from yt_dlp import YoutubeDL, MetadataParserPP
 from yt_dlp.postprocessor import FFmpegMetadataPP
 
 from src.bookmark_library import BookmarkLibrary
@@ -189,6 +189,8 @@ class MetadataField(XmlObject):
 class MetadataSuggestion(XmlObject):
     pattern_from: str
     pattern_to: str = ''
+    replace_regex: str = ''
+    replace_with: str = ''
     split_separators: str = ''
     split_slice: str = ''
 
@@ -417,6 +419,12 @@ if __name__ == '__main__':
     info = {
         'ext': 'mp3',
         'filepath': 'Mili - TIAN TIAN [Limbus Company] [szyPY8nbBF4].mp3',
-        'track': 'Test'
+        'track': 'Test',
+        'title': 'Mili - TIAN TIAN',
+        'test': 1.2345
     }
-    FFmpegMetadataPP(None).run(info)
+    # FFmpegMetadataPP(None).run(info)
+
+    info = MetadataParserPP(YoutubeDL(), [(MetadataParserPP.Actions.INTERPRET, '%(title.::-1)s (%(test).2f)', '%(artist)s - %(title)s'),
+                                          (MetadataParserPP.Actions.REPLACE, 'title', r'\((.+)\)', r'-\1-')]).run(info)
+    pprint(info)

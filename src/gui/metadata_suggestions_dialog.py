@@ -1,11 +1,12 @@
+from PySide6.QtCore import QEvent, QUrl
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import QItemSelection
-from PySide6.QtGui import QDropEvent
-from PySide6.QtWidgets import QStyle, QTableView
+from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtWidgets import QStyle, QApplication
 
 from src.gui.metadata_suggestions_gui import Ui_Dialog
 from src.gui.models.metadata_fields_model import MetadataFieldsModel, CheckboxDelegate, MetadataFieldsTableColumn
-from src.gui.models.metadata_suggestions_model import MetadataSuggestionsModel
+from src.gui.models.metadata_suggestions_model import MetadataSuggestionsModel, MetadataSuggestionsTableColumn
 from src.music_sync_library import MetadataField
 
 
@@ -31,6 +32,10 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
         self.field_remove_button.pressed.connect(self.remove_field)
 
         self.suggestions_table.setStyle(MetadataSuggestionsTableStyle())
+        self.suggestions_table.horizontalHeader().setMouseTracking(True)
+        self.suggestions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
+        self.suggestions_table.horizontalHeader().installEventFilter(self)
+        self.installEventFilter(self)
 
     def add_field(self):
         self.fields_table.model().layoutAboutToBeChanged.emit()
@@ -55,6 +60,55 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
         self.selected_field_label.setText(self.selected_field_label.text().split(':')[0] + ': ' + field.name)
         self.suggestions_table.setModel(MetadataSuggestionsModel(field.suggestions, parent=self))
         self.suggestions_table.resizeColumnsToContents()
+
+    def eventFilter(self, obj, event):
+        def over_resize_handle(pos):
+            idx = self.suggestions_table.horizontalHeader().logicalIndexAt(pos)
+            if idx < 0:
+                return False
+            left = self.suggestions_table.horizontalHeader().sectionPosition(idx)
+            right = left + self.suggestions_table.horizontalHeader().sectionSize(idx)
+            margin = 3
+            return abs(pos.x() - left) <= margin or abs(pos.x() - right) <= margin
+
+        def update_cursor():
+            global_pos = QCursor.pos()
+            pos = self.suggestions_table.horizontalHeader().mapFromGlobal(global_pos)
+            over_idx = self.suggestions_table.horizontalHeader().logicalIndexAt(pos)
+            idx_url = MetadataSuggestionsTableColumn(over_idx).doc_url()
+
+            if et == QEvent.Type.KeyPress and event.key() == QtCore.Qt.Key.Key_Control:
+                ctrl_down = True
+            elif et == QEvent.Type.KeyRelease and event.key() == QtCore.Qt.Key.Key_Control:
+                ctrl_down = False
+            else:
+                ctrl_down = QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier
+
+            if over_resize_handle(pos):
+                self.suggestions_table.horizontalHeader().setCursor(QCursor(QtCore.Qt.CursorShape.SplitHCursor))
+                return
+
+            if idx_url and ctrl_down:
+                self.suggestions_table.horizontalHeader().setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            else:
+                # Restore the header's default (lets it show the resize cursor at edges)
+                self.suggestions_table.horizontalHeader().unsetCursor()
+
+        et = event.type()
+
+        header_events = (QEvent.Type.Enter, QEvent.Type.HoverEnter, QEvent.Type.Leave, QEvent.Type.HoverLeave,
+                         QEvent.Type.MouseMove, QEvent.Type.HoverMove)
+
+        if obj is self.suggestions_table.horizontalHeader() and et in header_events or obj is self and et in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+            update_cursor()
+
+        return False
+
+    def suggestions_table_header_clicked(self, section: int):
+        modifier = QtWidgets.QApplication.keyboardModifiers()
+        sec_url = MetadataSuggestionsTableColumn(section).doc_url()
+        if modifier == QtCore.Qt.KeyboardModifier.ControlModifier:
+            QDesktopServices.openUrl(QUrl(sec_url))
 
 class MetadataSuggestionsTableStyle(QtWidgets.QProxyStyle):
     def drawPrimitive(self, element, option, painter, widget=None):
