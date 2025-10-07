@@ -5,7 +5,7 @@ from xml.etree.ElementTree import Element
 from PySide6.QtGui import QIcon
 
 from src.gui.models.xml_model import XmlObjectModelItem, XmlObjectModel
-from src.music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl
+from src.music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl, ExternalMetadataTable
 
 
 class FolderItem(XmlObjectModelItem):
@@ -138,10 +138,12 @@ class LibraryModel(XmlObjectModel):
         self.root = self.invisibleRootItem()
         self.metadata_table_path: str = ''
         self.loaded_library_object: MusicSyncLibrary | None = None
+        self.external_metadata_tables: list[ExternalMetadataTable] = []
 
         if xml_path is not None:
             self.loaded_library_object = MusicSyncLibrary.read_xml(xml_path)
             self.metadata_table_path = self.loaded_library_object.metadata_table_path
+            self.external_metadata_tables = self.loaded_library_object.external_metadata_tables
 
             for child in self.loaded_library_object.children:
                 if isinstance(child, Folder):
@@ -154,7 +156,9 @@ class LibraryModel(XmlObjectModel):
         for i in range(self.root.rowCount()):
             row = typing.cast(XmlObjectModelItem, self.root.child(i))
             children.append(row.to_xml_object())
-        return MusicSyncLibrary(self.metadata_table_path, children)
+        return MusicSyncLibrary(metadata_table_path=self.metadata_table_path,
+                                external_metadata_tables=self.external_metadata_tables,
+                                children=children)
 
     def to_xml(self, filename=None):
         if filename is None:

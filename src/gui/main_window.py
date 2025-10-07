@@ -11,7 +11,7 @@ from src.gui.main_gui import Ui_MainWindow
 from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
 from src.gui.models.library_model import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
 from src.gui.models.sync_action_combobox_model import SyncActionComboboxModel
-from src.music_sync_library import TrackSyncStatus, Collection
+from src.music_sync_library import TrackSyncStatus, Collection, ExternalMetadataTable
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -151,6 +151,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for box, status in self.action_combo_boxes.items():
                 box.setCurrentIndex(box.findText(selected_collection.sync_actions[status].gui_string))
 
+            self.update_metadata_suggestions_label()
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
@@ -242,10 +243,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
 
     def edit_metadata_suggestions(self):
-        metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(self.get_selected_collection().metadata_suggestions), parent=self)
+        tables = ([ExternalMetadataTable(id=0,
+                                        name='Table of this library',
+                                        path=self.treeView.model().metadata_table_path)] +
+                  deepcopy(self.treeView.model().external_metadata_tables))
+        metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(self.get_selected_collection().metadata_suggestions),
+                                                                tables,
+                                                                parent=self)
 
         if metadata_suggestions_dialog.exec():
             self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.fields_table.model().fields
+            self.treeView.model().external_metadata_tables = metadata_suggestions_dialog.external_tables_table.model().tables[1:]
+            self.update_metadata_suggestions_label()
+
+    def update_metadata_suggestions_label(self):
+        suggestions = [s.name for s in self.get_selected_collection().metadata_suggestions]
+        self.settings_fields_label.setText(self.settings_fields_label.text().split(': ')[0] + ': ' + ', '.join(suggestions))
 
     def update_metadata_table_label(self, path=''):
         if path:

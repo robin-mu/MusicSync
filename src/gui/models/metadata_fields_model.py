@@ -5,6 +5,7 @@ from PyQt6.QtCore import QModelIndex
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QCheckBox
 
+from src.gui.models.metadata_suggestions_model import MetadataSuggestionsTableColumn
 from src.music_sync_library import MetadataField
 
 
@@ -26,6 +27,19 @@ class MetadataFieldsTableColumn(IntEnum):
             return 'Default for format \noption "Format as title"'
         if self == MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS:
             return 'Default for format \noption "Remove brackets"'
+        return None
+
+    def tool_tip(self):
+        if self == MetadataFieldsTableColumn.NAME:
+            return 'The name of the field'
+        if self == MetadataFieldsTableColumn.ENABLED:
+            return 'Whether suggestions for this field will be generated and shown'
+        if self == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
+            return 'Show buttons next to the suggestions to format the selected metadata'
+        if self == MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
+            return 'Whether the format option "Format as title" will be enabled by default'
+        if self == MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS:
+            return 'Whether the format option "Remove brackets" will be enabled by default'
         return None
 
 
@@ -58,8 +72,10 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
         return None
 
     def headerData(self, section, orientation, /, role = ...):
-        if role == QtCore.Qt.ItemDataRole.DisplayRole and orientation == QtCore.Qt.Orientation.Horizontal:
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return str(MetadataFieldsTableColumn(section))
+        if role == QtCore.Qt.ItemDataRole.ToolTipRole:
+            return MetadataFieldsTableColumn(section).tool_tip()
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):

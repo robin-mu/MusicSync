@@ -18,6 +18,7 @@ from src.xml_object import XmlObject
 @dataclass
 class MusicSyncLibrary:
     metadata_table_path: str = ''
+    external_metadata_tables: list['ExternalMetadataTable'] = field(default_factory=list)
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
 
     @staticmethod
@@ -25,19 +26,25 @@ class MusicSyncLibrary:
         tree = et.parse(xml_path)
         root = tree.getroot()
         children = []
+        external_metadata_tables = []
         for child in root:
             if child.tag == 'Folder':
                 children.append(Folder.from_xml(child))
             elif child.tag == 'Collection':
                 children.append(Collection.from_xml(child))
+            elif child.tag == 'ExternalMetadataTable':
+                external_metadata_tables.append(ExternalMetadataTable.from_xml(child))
 
-        return MusicSyncLibrary(children=children, **root.attrib)
+        return MusicSyncLibrary(children=children, external_metadata_tables=external_metadata_tables, **root.attrib)
 
     def write_xml(self, xml_path: str):
         attrs = vars(self).copy()
         attrs.pop('children')
+        attrs.pop('external_metadata_tables')
 
         root = et.Element('MusicSyncLibrary', **attrs)
+        for table in self.external_metadata_tables:
+            root.append(table.to_xml())
         for child in self.children:
             root.append(child.to_xml())
 
@@ -179,7 +186,7 @@ class MetadataField(XmlObject):
         attrs['default_format_as_title'] = str(self.default_format_as_title)
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
 
-        el = et.Element('MetadataColumn', **attrs)
+        el = et.Element('MetadataField', **attrs)
         for suggestion in self.suggestions:
             el.append(suggestion.to_xml())
         return el
@@ -203,6 +210,20 @@ class MetadataSuggestion(XmlObject):
 
 
 @dataclass
+class ExternalMetadataTable(XmlObject):
+    id: int = -1
+    name: str = ''
+    path: str = ''
+
+    def to_xml(self) -> Element:
+        return et.Element('ExternalMetadataTable', id=str(self.id), name=self.name, path=self.path)
+
+    @staticmethod
+    def from_xml(el: Element) -> 'ExternalMetadataTable':
+        return ExternalMetadataTable(id=int(el.attrib['id']), name=el.attrib['name'], path=el.attrib['path'])
+
+
+@dataclass
 class Collection(XmlObject):
     DEFAULT_SYNC_ACTIONS: ClassVar[dict[TrackSyncStatus, TrackSyncAction]] = {
         TrackSyncStatus.ADDED_TO_SOURCE: TrackSyncAction.DOWNLOAD,
@@ -221,14 +242,14 @@ class Collection(XmlObject):
                 MetadataSuggestion('0_title'),
                 MetadataSuggestion('track'),
                 MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
-                MetadataSuggestion('title', '["“](?P<>.+)["“]'),
+                MetadataSuggestion('title', '["“](.+)["“]'),
                 MetadataSuggestion('title')
             ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
             MetadataField('artist', suggestions=[
                 MetadataSuggestion('0_artist'),
                 MetadataSuggestion('artist', split_separators=r'\,'),
                 MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙',),
-                MetadataSuggestion('title', ' by (?P<>.+)'),
+                MetadataSuggestion('title', ' by (.+)'),
                 MetadataSuggestion('channel'),
                 MetadataSuggestion('title')
             ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
@@ -285,7 +306,8 @@ class Collection(XmlObject):
             elif child.tag == 'MetadataSuggestions':
                 kwargs['metadata_suggestions'] = []
                 for column in child:
-                    kwargs['metadata_suggestions'].append(MetadataField.from_xml(column))
+                    if column.tag == 'MetadataField':
+                        kwargs['metadata_suggestions'].append(MetadataField.from_xml(column))
 
         return Collection(**(kwargs | el.attrib))
 
