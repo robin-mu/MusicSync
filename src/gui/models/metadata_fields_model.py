@@ -11,15 +11,18 @@ from src.music_sync_library import MetadataField
 class MetadataFieldsTableColumn(IntEnum):
     ENABLED = 0
     NAME = 1
-    SHOW_FORMAT_OPTIONS = 2
-    DEFAULT_FORMAT_AS_TITLE = 3
-    DEFAULT_REMOVE_BRACKETS = 4
+    TIMED_DATA = 2
+    SHOW_FORMAT_OPTIONS = 3
+    DEFAULT_FORMAT_AS_TITLE = 4
+    DEFAULT_REMOVE_BRACKETS = 5
 
     def __str__(self):
         if self == MetadataFieldsTableColumn.NAME:
             return 'Name'
         if self == MetadataFieldsTableColumn.ENABLED:
             return 'Enabled'
+        if self == MetadataFieldsTableColumn.TIMED_DATA:
+            return 'Timed'
         if self == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
             return 'Show format \noptions'
         if self == MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
@@ -33,6 +36,8 @@ class MetadataFieldsTableColumn(IntEnum):
             return 'The name of the field'
         if self == MetadataFieldsTableColumn.ENABLED:
             return 'Whether suggestions for this field will be generated and shown'
+        if self == MetadataFieldsTableColumn.TIMED_DATA:
+            return 'Whether this field contains timed data in LRC format. These fields will have a special editor during metadata selection'
         if self == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
             return 'Show buttons next to the suggestions to format the selected metadata'
         if self == MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
@@ -81,6 +86,7 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
         if index.isValid():
             self.set_field_from_index(index, value)
             if index.column() in [MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.ENABLED]:
+                self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.TIMED_DATA).refresh_editor()
                 self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS).refresh_editor()
                 self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE).refresh_editor()
                 self.parent.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS).refresh_editor()
@@ -103,6 +109,8 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
             self.parent.fields_table.itemDelegateForColumn(
                 MetadataFieldsTableColumn.ENABLED).refresh_editor()
             self.parent.fields_table.itemDelegateForColumn(
+                MetadataFieldsTableColumn.TIMED_DATA).refresh_editor()
+            self.parent.fields_table.itemDelegateForColumn(
                 MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS).refresh_editor()
             self.parent.fields_table.itemDelegateForColumn(
                 MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE).refresh_editor()
@@ -114,13 +122,9 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
 
     @staticmethod
     def field_to_row(field: MetadataField) -> dict[int, Any]:
-        return {
-            MetadataFieldsTableColumn.ENABLED: field.enabled,
-            MetadataFieldsTableColumn.NAME: field.name,
-            MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS: field.show_format_options,
-            MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE: field.default_format_as_title,
-            MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS: field.default_remove_brackets
-        }
+        return dict(zip(MetadataFieldsTableColumn.__members__.values(),
+                        [field.enabled, field.name, field.timed_data, field.show_format_options,
+                         field.default_format_as_title, field.default_remove_brackets]))
 
     def set_field_from_index(self, index: QModelIndex, value: Any):
         field = self.fields[index.row()]
@@ -129,6 +133,8 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
             field.enabled = value
         elif column == MetadataFieldsTableColumn.NAME:
             field.name = value
+        elif column == MetadataFieldsTableColumn.TIMED_DATA:
+            field.timed_data = value
         elif column == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
             field.show_format_options = value
         elif column == MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
@@ -163,7 +169,7 @@ class CheckboxDelegate(QtWidgets.QStyledItemDelegate):
         enabled = index.model().data(enabled_index, role=QtCore.Qt.ItemDataRole.BackgroundRole)
         format_options = index.model().data(format_options_index, role=QtCore.Qt.ItemDataRole.BackgroundRole)
 
-        if index.column() == MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS:
+        if index.column() in [MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.TIMED_DATA]:
             editor.setEnabled(enabled)
         elif index.column() >= MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE:
             editor.setEnabled(enabled and format_options)

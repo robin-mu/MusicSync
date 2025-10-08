@@ -44,7 +44,6 @@ class CollectionItem(XmlObjectModelItem):
         self.folder_path = kwargs.get('folder_path', '')
         self.filename_format = kwargs.get('filename_format', '')
         self.file_extension = kwargs.get('file_extension', '')
-        self.file_tags = kwargs.get('file_tags', '')
         self.save_playlists_to_subfolders = kwargs.get('save_playlists_to_subfolders', False)
         self.sync_bookmark_file = kwargs.get('sync_bookmark_file', '')
         self.sync_bookmark_path = kwargs.get('sync_bookmark_path', '')
@@ -52,6 +51,7 @@ class CollectionItem(XmlObjectModelItem):
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
         self.metadata_suggestions = kwargs.get('metadata_suggestions', deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
+        self.file_tags = kwargs.get('file_tags', deepcopy(Collection.DEFAULT_FILE_TAGS))
 
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':

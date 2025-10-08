@@ -6,19 +6,24 @@ from PySide6.QtWidgets import QStyle, QApplication
 
 from src.gui.metadata_suggestions_gui import Ui_Dialog
 from src.gui.models.external_metadata_tables_model import ExternalMetadataTablesModel, ExternalMetadataTablesColumn
+from src.gui.models.file_tags_model import FileTagsModel, FileTagsTableColumn
 from src.gui.models.metadata_fields_model import MetadataFieldsModel, CheckboxDelegate, MetadataFieldsTableColumn
 from src.gui.models.metadata_suggestions_model import MetadataSuggestionsModel, MetadataSuggestionsTableColumn
-from src.music_sync_library import MetadataField, MetadataSuggestion, ExternalMetadataTable
+from src.music_sync_library import MetadataField, MetadataSuggestion, ExternalMetadataTable, FileTag
 
 
 class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
-    def __init__(self, metadata_suggestions: list[MetadataField], external_metadata_tables: list[ExternalMetadataTable], parent=None):
+    def __init__(self, metadata_suggestions: list[MetadataField], external_metadata_tables: list[ExternalMetadataTable],
+                 file_tags: list[FileTag], parent=None):
         super(MetadataSuggestionsDialog, self).__init__(parent)
         self.setupUi(self)
 
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+
         # Metadata fields table
         self.fields_table.setModel(MetadataFieldsModel(metadata_suggestions, parent=self))
-        for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE, MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
+        for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.TIMED_DATA, MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE, MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
             self.fields_table.setItemDelegateForColumn(col, CheckboxDelegate(self))
 
             for row in range(self.fields_table.model().rowCount()):
@@ -46,6 +51,12 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
 
         self.external_table_add_button.pressed.connect(self.add_external_table)
         self.external_table_remove_button.pressed.connect(self.remove_external_table)
+
+        self.tags_table.setModel(FileTagsModel(file_tags, parent=self))
+        self.tags_table.resizeColumnsToContents()
+
+        self.tag_add_button.pressed.connect(self.add_tag)
+        self.tag_remove_button.pressed.connect(self.remove_tag)
 
     def add_field(self):
         self.fields_table.model().beginInsertRows(QModelIndex(), self.fields_table.model().rowCount(), self.fields_table.model().rowCount())
@@ -171,6 +182,23 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
         self.external_tables_table.model().beginRemoveRows(QModelIndex(), index, index)
         self.external_tables_table.model().tables.pop(index)
         self.external_tables_table.model().endRemoveRows()
+
+    def add_tag(self):
+        self.tags_table.beginInsertRows(QModelIndex(), self.tags_table.model().rowCount(), self.tags_table.model().rowCount())
+        self.tags_table.model().tags.append(FileTag(self.tag_combobox.currentText()))
+        self.tags_table.model().endInsertRows()
+
+        new_index = self.tags_table.model().index(self.tags_table.model().rowCount() - 1, FileTagsTableColumn.FORMAT)
+        self.tags_table.edit(new_index)
+
+    def remove_tag(self):
+        index = self.tags_table.currentIndex().row()
+        if index == -1:
+            return
+
+        self.tags_table.model().beginRemoveRows(QModelIndex(), index, index)
+        self.tags_table.model().tags.pop(index)
+        self.tags_table.model().endRemoveRows()
 
 
 class MetadataSuggestionsTableStyle(QtWidgets.QProxyStyle):

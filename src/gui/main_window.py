@@ -158,6 +158,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 box.setCurrentIndex(box.findText(selected_collection.sync_actions[status].gui_string))
 
             self.update_metadata_suggestions_label()
+            self.update_tags_label()
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
@@ -253,18 +254,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                         name='Table of this library',
                                         path=self.treeView.model().metadata_table_path)] +
                   deepcopy(self.treeView.model().external_metadata_tables))
-        metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(self.get_selected_collection().metadata_suggestions),
+        current_collection = self.get_selected_collection()
+        metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(current_collection.metadata_suggestions),
                                                                 tables,
+                                                                deepcopy(current_collection.file_tags),
                                                                 parent=self)
 
         if metadata_suggestions_dialog.exec():
-            self.get_selected_collection().metadata_suggestions = metadata_suggestions_dialog.fields_table.model().fields
+            current_collection.metadata_suggestions = metadata_suggestions_dialog.fields_table.model().fields
+            current_collection.file_tags = metadata_suggestions_dialog.tags_table.model().tags
             self.treeView.model().external_metadata_tables = metadata_suggestions_dialog.external_tables_table.model().tables[1:]
             self.update_metadata_suggestions_label()
+            self.update_tags_label()
 
     def update_metadata_suggestions_label(self):
         suggestions = [s.name for s in self.get_selected_collection().metadata_suggestions]
         self.settings_fields_label.setText(self.settings_fields_label.text().split(': ')[0] + ': ' + ', '.join(suggestions))
+
+    def update_tags_label(self):
+        tags = [t.name for t in self.get_selected_collection().file_tags]
+        self.settings_tags_label.setText(self.settings_tags_label.text().split(': ')[0] + ': ' + ', '.join(tags))
 
     def update_metadata_table_label(self, path=''):
         if path:

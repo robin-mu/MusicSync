@@ -1,7 +1,7 @@
 from enum import IntEnum
 from typing import Any
 
-from PyQt6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex
 from PySide6 import QtCore
 
 from src.gui.models.metadata_fields_model import MetadataFieldsTableColumn

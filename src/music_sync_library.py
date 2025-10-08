@@ -155,6 +155,7 @@ class MetadataField(XmlObject):
     name: str
     suggestions: list['MetadataSuggestion']
     enabled: bool = True
+    timed_data: bool = False
     show_format_options: bool = False
     default_format_as_title: bool = False
     default_remove_brackets: bool = False
@@ -162,6 +163,8 @@ class MetadataField(XmlObject):
     def __post_init__(self):
         if isinstance(self.enabled, str):
             self.enabled = self.enabled == 'True'
+        if isinstance(self.timed_data, str):
+            self.timed_data = self.timed_data == 'True'
         if isinstance(self.show_format_options, str):
             self.show_format_options = self.show_format_options == 'True'
         if isinstance(self.default_format_as_title, str):
@@ -182,6 +185,7 @@ class MetadataField(XmlObject):
         attrs = vars(self).copy()
         attrs.pop('suggestions')
         attrs['enabled'] = str(self.enabled)
+        attrs['timed_data'] = str(self.timed_data)
         attrs['show_format_options'] = str(self.show_format_options)
         attrs['default_format_as_title'] = str(self.default_format_as_title)
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
@@ -222,6 +226,18 @@ class ExternalMetadataTable(XmlObject):
     def from_xml(el: Element) -> 'ExternalMetadataTable':
         return ExternalMetadataTable(id=int(el.attrib['id']), name=el.attrib['name'], path=el.attrib['path'])
 
+@dataclass
+class FileTag(XmlObject):
+    name: str
+    format: str = ''
+
+    @staticmethod
+    def from_xml(el: Element) -> 'FileTag':
+        return FileTag(**el.attrib)
+
+    def to_xml(self) -> Element:
+        return et.Element('FileTag', **vars(self))
+
 
 @dataclass
 class Collection(XmlObject):
@@ -236,7 +252,7 @@ class Collection(XmlObject):
 
     # field for suggestion from yt_dlp's metadata with name "field"
     # 0_field for suggestion from this table column with name "field"
-    # 1_field for suggestion from external table column with name "field"
+    # 1_field for suggestion from external table with id 1 and column with name "field"
     DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataField']] = [
             MetadataField('title', suggestions=[
                 MetadataSuggestion('0_title'),
@@ -256,20 +272,40 @@ class Collection(XmlObject):
             MetadataField('album', suggestions=[
                 MetadataSuggestion('0_album'),
                 MetadataSuggestion('album'),
-                MetadataSuggestion('playlist'),
+                MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
             ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
             MetadataField('track', suggestions=[
                 MetadataSuggestion('0_track'),
                 MetadataSuggestion('track'),
                 MetadataSuggestion('playlist_index'),
-            ])
+            ], enabled=False),
+            MetadataField('lyrics', suggestions=[
+                MetadataSuggestion('0_lyrics'),
+                MetadataSuggestion('lyrics'),
+                MetadataSuggestion('EXT_LYRICS:%(0_artist,artist&{} - )s%(0_title,track,title)')
+            ], enabled=False, timed_data=True),
+            MetadataField('chapters', suggestions=[
+                MetadataSuggestion('0_chapters'),
+                MetadataSuggestion('chapters+multi_video:%(title)s'),
+            ], enabled=False, timed_data=True),
+            MetadataField('thumbnail', suggestions=[
+                MetadataSuggestion('0_thumbnail'),
+                MetadataSuggestion('%(thumbnails.-1.url)s'),
+                MetadataSuggestion('%(thumbnails.2.url)s'),
+            ], enabled=False)
         ]
+
+    DEFAULT_FILE_TAGS: ClassVar[list['FileTag']] = [
+        FileTag('title', '0_title'),
+        FileTag('artist', '0_artist'),
+        FileTag('album', '0_album'),
+        FileTag('thumbnail', '0_thumbnail'),
+    ]
 
     name: str
     folder_path: str = ''
     filename_format: str = ''
     file_extension: str = ''
-    file_tags: str = ''
     save_playlists_to_subfolders: bool = False
     urls: list['CollectionUrl'] = field(default_factory=list)
     sync_bookmark_file: str = ''
@@ -280,6 +316,8 @@ class Collection(XmlObject):
         default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
     metadata_suggestions: list[
         'MetadataField'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
+    file_tags: list[FileTag] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_FILE_TAGS))
+
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -308,6 +346,8 @@ class Collection(XmlObject):
                 for column in child:
                     if column.tag == 'MetadataField':
                         kwargs['metadata_suggestions'].append(MetadataField.from_xml(column))
+            elif child.tag == 'FileTags':
+                kwargs['file_tags'] = [FileTag.from_xml(tag) for tag in child]
 
         return Collection(**(kwargs | el.attrib))
 
@@ -318,6 +358,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_path')
         attrs.pop('sync_bookmark_title_as_url_name')
         attrs.pop('sync_actions')
+        attrs.pop('file_tags')
         attrs.pop('metadata_suggestions')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
         attrs['exclude_after_download'] = str(self.exclude_after_download)
@@ -338,6 +379,12 @@ class Collection(XmlObject):
             for suggestion in self.metadata_suggestions:
                 suggestions.append(suggestion.to_xml())
             el.append(suggestions)
+
+        if self.file_tags != Collection.DEFAULT_FILE_TAGS:
+            file_tags = et.Element('FileTags')
+            for file_tag in self.file_tags:
+                file_tags.append(file_tag.to_xml())
+            el.append(file_tags)
 
         for url in self.urls:
             el.append(url.to_xml())
@@ -449,4 +496,32 @@ if __name__ == '__main__':
 
     info = MetadataParserPP(YoutubeDL(), [(MetadataParserPP.Actions.INTERPRET, '%(title.::-1)s (%(test).2f)', '%(artist)s - %(title)s'),
                                           (MetadataParserPP.Actions.REPLACE, 'title', r'\((.+)\)', r'-\1-')]).run(info)
+
+    ydl_opts = {'final_ext': 'mp3',
+                'format': 'ba[acodec^=mp3]/ba/b',
+                'outtmpl': {'pl_thumbnail': ''},
+                'writethumbnail': True,
+                'postprocessors': [{'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
+                                                 '%(playlist_index)s',
+                                                 '%(meta_track)s'),
+                                                (yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
+                                                 '%(thumbnails.2.url)s',
+                                                 '%(thumbnail_test)s')
+                                                ],
+                                    'key': 'MetadataParser',
+                                    'when': 'pre_process'},
+                                   {'key': 'FFmpegExtractAudio',
+                                    'nopostoverwrites': False,
+                                    'preferredcodec': 'mp3',
+                                    'preferredquality': '5'},
+                                   {'add_chapters': True,
+                                    'add_infojson': 'if_exists',
+                                    'add_metadata': True,
+                                    'key': 'FFmpegMetadata'},
+                                   {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
+                'compat_opts': ['no-youtube-unavailable-videos']
+            }
+
+    ydl = YoutubeDL(ydl_opts)
+    info = ydl.extract_info('https://www.youtube.com/watch?v=53bZSTSLUqI', download=False)
     pprint(info)
