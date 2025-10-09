@@ -184,7 +184,7 @@ class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):
         self.external_tables_table.model().endRemoveRows()
 
     def add_tag(self):
-        self.tags_table.beginInsertRows(QModelIndex(), self.tags_table.model().rowCount(), self.tags_table.model().rowCount())
+        self.tags_table.model().beginInsertRows(QModelIndex(), self.tags_table.model().rowCount(), self.tags_table.model().rowCount())
         self.tags_table.model().tags.append(FileTag(self.tag_combobox.currentText()))
         self.tags_table.model().endInsertRows()
 

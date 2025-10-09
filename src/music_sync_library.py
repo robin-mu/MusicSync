@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as et
+from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import auto, StrEnum
@@ -6,12 +7,9 @@ from pprint import pprint
 from typing import Union, ClassVar, Any
 from xml.etree.ElementTree import Element
 
-import pandas as pd
 import yt_dlp
 from yt_dlp import YoutubeDL, MetadataParserPP
-from yt_dlp.postprocessor import FFmpegMetadataPP
 
-from src.bookmark_library import BookmarkLibrary
 from src.xml_object import XmlObject
 
 
@@ -302,6 +300,8 @@ class Collection(XmlObject):
         FileTag('thumbnail', '0_thumbnail'),
     ]
 
+    PathComponent = namedtuple('PathComponent', ['id', 'name'])
+
     name: str
     folder_path: str = ''
     filename_format: str = ''
@@ -309,7 +309,7 @@ class Collection(XmlObject):
     save_playlists_to_subfolders: bool = False
     urls: list['CollectionUrl'] = field(default_factory=list)
     sync_bookmark_file: str = ''
-    sync_bookmark_path: list[tuple[str, str]] = field(default_factory=list)
+    sync_bookmark_path: list[PathComponent] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
     exclude_after_download: bool = False
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(
@@ -336,7 +336,7 @@ class Collection(XmlObject):
                 kwargs['sync_bookmark_title_as_url_name'] = child.attrib['title_as_url_name']
                 kwargs['sync_bookmark_path'] = []
                 for path_component in child:
-                    kwargs['sync_bookmark_path'].append((path_component.attrib['id'], path_component.attrib['name']))
+                    kwargs['sync_bookmark_path'].append(Collection.PathComponent(**path_component.attrib))
             elif child.tag == 'SyncActions':
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':
@@ -390,53 +390,6 @@ class Collection(XmlObject):
             el.append(url.to_xml())
         return el
 
-    def update_sync_status(self):
-        # updating collection urls if sync with bookmarks is enabled
-        if self.sync_bookmark_file:
-            bookmarks = BookmarkLibrary.create_from_path(self.sync_bookmark_file)
-            folder = bookmarks.go_to_path([e[0] for e in self.sync_bookmark_path]).get_all_bookmarks()
-            for child in folder.values():
-                if child.url not in self.urls:
-                    self.urls.append(CollectionUrl(url=child.url,
-                                                   name=child.bookmark_title if self.sync_bookmark_title_as_url_name else ''))
-
-        ydl_opts = {'final_ext': 'mp3',
-                    'format': 'ba[acodec^=mp3]/ba/b',
-                    'outtmpl': {'pl_thumbnail': ''},
-                    'writethumbnail': True,
-                    'postprocessors': [{'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
-                                                     '%(playlist_index)s',
-                                                     '%(meta_track)s')],
-                                        'key': 'MetadataParser',
-                                        'when': 'pre_process'},
-                                       {'key': 'FFmpegExtractAudio',
-                                        'nopostoverwrites': False,
-                                        'preferredcodec': 'mp3',
-                                        'preferredquality': '5'},
-                                       {'add_chapters': True,
-                                        'add_infojson': 'if_exists',
-                                        'add_metadata': True,
-                                        'key': 'FFmpegMetadata'},
-                                       {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
-                    'compat_opts': ['no-youtube-unavailable-videos']
-                    }
-
-        ydl = YoutubeDL(ydl_opts)
-        sync_status = pd.DataFrame()
-        ydl.add_post_processor(YTMusicAlbumCover(), 'pre_process')
-
-        # download track info of all collection urls
-        for url in self.urls:
-            info = ydl.extract_info(url.url, process=False)
-            if info['_type'] == 'playlist':
-                entries = list(info['entries'])
-                playlist_tracks = set([e['url'] for e in entries])
-                info['entries'] = entries
-            pprint(info)
-
-            info = ydl.process_ie_result(info, download=True)
-            pprint(info)
-
 
 class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
     # set 1:1 album cover to be embedded (only for yt-music)
@@ -454,7 +407,7 @@ class CollectionUrl(XmlObject):
     url: str
     name: str = ''
     excluded: bool = False
-    tracks: list[str] = field(default_factory=list)
+    tracks: dict[str, 'Track'] = field(default_factory=dict)
 
     def __post_init__(self):
         if isinstance(self.excluded, str):
@@ -462,10 +415,11 @@ class CollectionUrl(XmlObject):
 
     @staticmethod
     def from_xml(el: Element) -> 'CollectionUrl':
-        tracks = []
+        tracks = {}
         for child in el:
             if child.tag == 'Track':
-                tracks.append(child.text)
+                track = Track.from_xml(child)
+                tracks[track.url] = track
         return CollectionUrl(**el.attrib)
 
     def to_xml(self) -> Element:
@@ -474,11 +428,33 @@ class CollectionUrl(XmlObject):
         attrs['excluded'] = str(self.excluded)
 
         el = et.Element('CollectionUrl', **attrs)
-        for track in self.tracks:
-            track_el = et.Element('Track')
-            track_el.text = track
-            el.append(track_el)
+        for track in self.tracks.values():
+            el.append(track.to_xml())
         return el
+
+
+@dataclass
+class Track(XmlObject):
+    url: str
+    status: TrackSyncStatus
+    title: str
+    path: str
+    permanently_downloaded: bool = False
+
+    def __post_init__(self):
+        if isinstance(self.permanently_downloaded, str):
+            self.permanently_downloaded = self.permanently_downloaded == 'True'
+
+    @staticmethod
+    def from_xml(el: Element) -> 'Track':
+        return Track(url=el.attrib['url'], status=TrackSyncStatus.__members__[el.attrib['last_status']],
+                     path=el.attrib['path'], title=el.attrib['title'],
+                     permanently_downloaded=el.attrib['permanently_downloaded'])
+
+    def to_xml(self) -> Element:
+        return et.Element('Track', url=self.url, last_status=self.status.name, path=self.path,
+                          permanently_downloaded=str(self.permanently_downloaded),
+                          title=self.title)
 
 
 if __name__ == '__main__':

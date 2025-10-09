@@ -205,7 +205,7 @@ class Ui_MainWindow(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setObjectName("scrollArea")
         self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, -121, 697, 718))
+        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 697, 718))
         self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
         self.formLayout_4 = QtWidgets.QFormLayout(self.scrollAreaWidgetContents)
         self.formLayout_4.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeading|QtCore.Qt.AlignmentFlag.AlignLeft|QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -445,7 +445,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuEdit.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(3)
+        self.tabWidget.setCurrentIndex(0)
         self.sync_stack.setCurrentIndex(0)
         self.metadata_stack.setCurrentIndex(1)
         self.tags_stack.setCurrentIndex(0)

@@ -6,6 +6,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QIcon, QDesktopServices
 from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
     QDialogButtonBox, QTreeView, QApplication
 
+from src.download.downloader import MusicSyncDownloader
 from src.gui.bookmark_dialog import BookmarkDialog
 from src.gui.main_gui import Ui_MainWindow
 from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
@@ -19,6 +20,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         self.setupUi(self)
 
+        # Menu bar
+        self.actionNew_library.triggered.connect(self.new_library)
+        self.actionOpen_library.triggered.connect(self.open_library)
+        self.actionSave_library.triggered.connect(self.save_library)
+        self.actionSave_library_as.triggered.connect(self.save_library_as)
+        self.actionChange_Track_Metdata_Table.triggered.connect(self.change_metadata_table)
+
+
+        # Library Tree View
         self.treeView.setModel(LibraryModel('/home/robin/Desktop/Music-Sync/a.xml'))
         self.treeView.expandAll()
 
@@ -26,12 +36,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.treeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.treeView.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.treeView, point))
 
-        self.actionNew_library.triggered.connect(self.new_library)
-        self.actionOpen_library.triggered.connect(self.open_library)
-        self.actionSave_library.triggered.connect(self.save_library)
-        self.actionSave_library_as.triggered.connect(self.save_library_as)
-        self.actionChange_Track_Metdata_Table.triggered.connect(self.change_metadata_table)
 
+        # File sync status page
+        self.sync_button.pressed.connect(self.sync_collection)
+
+
+        # Collection settings page
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
         self.settings_save.pressed.connect(self.save_settings)
         self.settings_sync_button.pressed.connect(self.change_sync_folder)
@@ -280,6 +290,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.metadata_table_label.setText(f'Current track metadata table: {path} (Click to change)')
         else:
             self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
+
+    def sync_collection(self):
+        downloader = MusicSyncDownloader()
+        downloader.update_sync_status(self.get_selected_collection().to_xml_object())
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
