@@ -157,6 +157,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_filename_format.setText(selected_collection.filename_format)
             self.settings_file_extension.setText(selected_collection.file_extension)
             self.settings_subfolder.setChecked(selected_collection.save_playlists_to_subfolders)
+            self.settings_url_name_format.setText(selected_collection.url_name_format)
             self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file, selected_collection.sync_bookmark_path, selected_collection.sync_bookmark_title_as_url_name)
@@ -191,6 +192,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.filename_format = self.settings_filename_format.text()
         item.file_extension = self.settings_file_extension.text()
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
+        item.url_name_format = self.settings_url_name_format.text()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
         item.sync_actions = {
             TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(self.added_combo_box.currentIndex()).action,
@@ -222,19 +224,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if file:
             font = self.settings_folder_path.font()
             font.setItalic(False)
-            self.settings_bookmark_file_label.setFont(font)
-            self.settings_bookmark_folder_label.setFont(font)
+            self.settings_bookmark_label.setFont(font)
 
-            self.settings_bookmark_file_label.setText(file)
-            self.settings_bookmark_folder_label.setText('/'.join([e[1] for e in path]))
+            text = f'File: {file}\nFolder: {"/".join([e[1] for e in path])}'
+            self.settings_bookmark_label.setText(text)
         else:
             font = self.settings_folder_path.font()
             font.setItalic(True)
-            self.settings_bookmark_file_label.setFont(font)
-            self.settings_bookmark_folder_label.setFont(font)
+            self.settings_bookmark_label.setFont(font)
 
-            self.settings_bookmark_file_label.setText('Not syncing')
-            self.settings_bookmark_folder_label.setText('Not syncing')
+            self.settings_bookmark_label.setText('Not syncing')
 
     def change_sync_folder(self):
         def selection_changed(selected: QItemSelection, _: QItemSelection):

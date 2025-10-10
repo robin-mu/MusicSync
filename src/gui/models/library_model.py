@@ -52,6 +52,7 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
         self.metadata_suggestions = kwargs.get('metadata_suggestions', deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
         self.file_tags = kwargs.get('file_tags', deepcopy(Collection.DEFAULT_FILE_TAGS))
+        self.url_name_format = kwargs.get('url_name_format', '')
 
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':
@@ -99,8 +100,7 @@ class CollectionUrlItem(XmlObjectModelItem):
 
     @staticmethod
     def from_xml_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
-        return CollectionUrlItem(url=collection_url.url, tracks=deepcopy(collection_url.tracks),
-                                 excluded=collection_url.excluded, name=collection_url.name)
+        return CollectionUrlItem(**(vars(collection_url) | {'tracks': deepcopy(collection_url.tracks)}))
 
     def to_xml_object(self):
         name = self.text() if self.text() != self.url else ''

@@ -318,17 +318,21 @@ class Collection(XmlObject):
         MetadataField('lyrics', suggestions=[
             MetadataSuggestion('0_lyrics'),
             MetadataSuggestion('lyrics'),
-            MetadataSuggestion('EXT_LYRICS:%(0_artist,artist&{} - )s%(0_title,track,title)')
+            MetadataSuggestion('EXT_LYRICS:%(0_artist,artist&{} - )s%(0_title,track,title)s')
         ], enabled=False, timed_data=True),
         MetadataField('chapters', suggestions=[
             MetadataSuggestion('0_chapters'),
-            MetadataSuggestion('chapters+multi_video:%(title)s'),
+            MetadataSuggestion('%(chapters)s+MULTI_VIDEO:%(title)s'),
         ], enabled=False, timed_data=True),
         MetadataField('thumbnail', suggestions=[
             MetadataSuggestion('0_thumbnail'),
             MetadataSuggestion('%(thumbnails.-1.url)s'),
             MetadataSuggestion('%(thumbnails.2.url)s'),
-        ], enabled=False)
+        ], enabled=False),
+        MetadataField('timed_data', suggestions=[
+            MetadataSuggestion('0_timed_data'),
+            MetadataSuggestion('%(0_lyrics)s+%(0_chapters)s'),
+        ], enabled=False, timed_data=True),
     ]
 
     DEFAULT_FILE_TAGS: ClassVar[list['FileTag']] = [
@@ -341,20 +345,26 @@ class Collection(XmlObject):
     PathComponent = namedtuple('PathComponent', ['id', 'name'])
 
     name: str
+
     folder_path: str = ''
     filename_format: str = ''
     file_extension: str = ''
     save_playlists_to_subfolders: bool = False
-    urls: list['CollectionUrl'] = field(default_factory=list)
+    url_name_format: str = ''
+    exclude_after_download: bool = False
+
     sync_bookmark_file: str = ''
     sync_bookmark_path: list[PathComponent] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
-    exclude_after_download: bool = False
+
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(
         default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
+
     metadata_suggestions: list[
         'MetadataField'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
     file_tags: list[FileTag] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_FILE_TAGS))
+
+    urls: list['CollectionUrl'] = field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
