@@ -99,11 +99,18 @@ class CollectionUrlItem(XmlObjectModelItem):
 
     @staticmethod
     def from_xml_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
-        return CollectionUrlItem(**vars(collection_url))
+        return CollectionUrlItem(url=collection_url.url, tracks=deepcopy(collection_url.tracks),
+                                 excluded=collection_url.excluded, name=collection_url.name)
 
     def to_xml_object(self):
         name = self.text() if self.text() != self.url else ''
         return CollectionUrl(name=name, **vars(self))
+
+    def update(self, collection_url: CollectionUrl):
+        self.url = collection_url.url
+        self.tracks = collection_url.tracks
+        self.excluded = collection_url.excluded
+        self.setText(collection_url.name)
 
 
 class LibraryModel(XmlObjectModel):

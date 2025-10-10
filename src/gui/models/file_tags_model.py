@@ -41,7 +41,7 @@ class FileTagsModel(QtCore.QAbstractTableModel):
         if not index.isValid():
             return None
 
-        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole, QtCore.Qt.ItemDataRole]:
+        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole]:
             return FileTagsModel.field_to_row(self.tags[index.row()])[index.column()]
 
         return None

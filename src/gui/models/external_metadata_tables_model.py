@@ -46,7 +46,7 @@ class ExternalMetadataTablesModel(QtCore.QAbstractTableModel):
         if not index.isValid():
             return None
 
-        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole, QtCore.Qt.ItemDataRole]:
+        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole]:
             return ExternalMetadataTablesModel.field_to_row(self.tables[index.row()])[index.column()]
 
         return None

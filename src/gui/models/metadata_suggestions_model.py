@@ -69,7 +69,7 @@ class MetadataSuggestionsModel(QAbstractTableModel):
         if not index.isValid():
             return None
 
-        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole, QtCore.Qt.ItemDataRole]:
+        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole]:
             return MetadataSuggestionsModel.suggestion_to_row(self.suggestions[index.row()])[index.column()]
         else:
             return None
@@ -151,11 +151,3 @@ class MetadataSuggestionsModel(QAbstractTableModel):
             suggestion.split_separators = value
         elif column == MetadataSuggestionsTableColumn.SLICE:
             suggestion.split_slice = value
-
-    def relocateRow(self, from_index: int, to_index: int):
-        row_last = max(from_index, to_index)
-        row_first = min(from_index, to_index)
-
-        #self.beginMoveRows(QtCore.QModelIndex(), row_last, row_last, QtCore.QModelIndex(), row_first)
-        #self.suggestions.insert(to_index, self.suggestions.pop(from_index))
-        #self.endMoveRows()

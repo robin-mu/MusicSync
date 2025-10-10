@@ -10,9 +10,10 @@ from src.download.downloader import MusicSyncDownloader
 from src.gui.bookmark_dialog import BookmarkDialog
 from src.gui.main_gui import Ui_MainWindow
 from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
+from src.gui.models.file_sync_model import FileSyncModel, FileSyncModelColumn, ActionComboboxDelegate
 from src.gui.models.library_model import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
 from src.gui.models.sync_action_combobox_model import SyncActionComboboxModel
-from src.music_sync_library import TrackSyncStatus, ExternalMetadataTable
+from src.music_sync_library import TrackSyncStatus, ExternalMetadataTable, CollectionUrl, TrackSyncAction
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -38,7 +39,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
         # File sync status page
-        self.sync_button.pressed.connect(self.sync_collection)
+        self.compare_button.pressed.connect(self.compare_collection)
 
 
         # Collection settings page
@@ -54,7 +55,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                    [TrackSyncStatus.ADDED_TO_SOURCE, TrackSyncStatus.NOT_DOWNLOADED, TrackSyncStatus.REMOVED_FROM_SOURCE, TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
         for box, status in self.action_combo_boxes.items():
             box.setModel(SyncActionComboboxModel(status))
-            box.highlighted[int].connect(lambda index, box=box: self.show_action_item_tip(box, index))
+            box.highlighted[int].connect(lambda index, box=box: self.statusbar.showMessage(box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
             box.view().viewport().installEventFilter(self)
 
         self.settings_filename_format_label.mousePressEvent = self.open_doc_url
@@ -65,10 +66,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier:
             QDesktopServices.openUrl(QUrl('https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#output-template'))
 
-
-    def show_action_item_tip(self, box, index):
-        tip = box.itemData(index, Qt.ItemDataRole.StatusTipRole)
-        self.statusbar.showMessage(tip or '')
 
     def eventFilter(self, obj, event):
         for box in self.action_combo_boxes.keys():
@@ -179,6 +176,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.metadata_stack.setCurrentIndex(0)
             self.tags_stack.setCurrentIndex(0)
             self.settings_stack.setCurrentIndex(0)
+
+        self.statusbar.clearMessage()
 
     def save_settings(self, item: CollectionItem = None):
         if item is None:
@@ -291,9 +290,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
 
-    def sync_collection(self):
+    def compare_collection(self):
         downloader = MusicSyncDownloader()
-        downloader.update_sync_status(self.get_selected_collection().to_xml_object())
+
+        selected_collection = self.get_selected_collection()
+
+        selected_collection_xml = selected_collection.to_xml_object()
+
+        sync_status = downloader.update_sync_status(selected_collection_xml)
+
+
+        old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for i in range(selected_collection.rowCount())}
+        new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
+
+        rows_to_be_removed = []
+        for i, (old_url, item) in enumerate(old_urls.items()):
+            if old_url in new_urls:
+                item.update(new_urls[old_url])
+            else:
+                rows_to_be_removed.append(i)
+
+        for i in sorted(rows_to_be_removed, reverse=True):
+            selected_collection.removeRow(i)
+
+        for new_url, item in new_urls.items():
+            if new_url not in old_urls:
+                selected_collection.appendRow(CollectionUrlItem.from_xml_object(item))
+
+        self.update_sync_status_table(sync_status)
+
+    def update_sync_status_table(self, sync_status):
+        self.sync_status_table.setModel(FileSyncModel(sync_status, parent=self))
+        self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(update_callback=self.sync_actions_updated, parent=self))
+        for row in range(self.sync_status_table.model().rowCount()):
+            self.sync_status_table.openPersistentEditor(self.sync_status_table.model().index(row, FileSyncModelColumn.ACTION))
+        self.sync_status_table.resizeColumnsToContents()
+        self.sync_actions_updated('')
+
+    def sync_actions_updated(self, text):
+        if text == TrackSyncAction.DECIDE_INDIVIDUALLY.gui_string or TrackSyncAction.DECIDE_INDIVIDUALLY in list(self.sync_status_table.model().df['action']):
+            self.sync_button.setEnabled(False)
+            self.sync_button.setStatusTip('All "Decide individually" actions have to be resolved before sync can start')
+        else:
+            self.sync_button.setEnabled(True)
+            self.sync_button.setStatusTip('')
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
@@ -339,10 +379,17 @@ class TreeContextMenu(QMenu):
             add_url_action = QAction('Add URL')
             add_url_action.setIcon(QIcon.fromTheme('list-add'))
             add_url_action.triggered.connect(self.add_url)
+            if self.item.sync_bookmark_file:
+                add_url_action.setToolTip('This collection is synchronized with a bookmarks folder, so manually adding URLs is not possible')
+                add_url_action.setEnabled(False)
+
             self.addAction(add_url_action)
 
             import_urls_from_bookmarks_action = QAction('Import URLs From Bookmarks')
             import_urls_from_bookmarks_action.triggered.connect(self.import_from_bookmarks)
+            if self.item.sync_bookmark_file:
+                import_urls_from_bookmarks_action.setToolTip('This collection is synchronized with a bookmarks folder, so manually adding URLs is not possible')
+                import_urls_from_bookmarks_action.setEnabled(False)
             self.addAction(import_urls_from_bookmarks_action)
         elif isinstance(self.item, CollectionUrlItem):
             exclude_action = QAction('Include URL' if self.item.excluded else 'Exclude URL from downloading')
@@ -355,7 +402,9 @@ class TreeContextMenu(QMenu):
             delete_action.triggered.connect(self.remove)
             self.addAction(delete_action)
 
+        self.setToolTipsVisible(True)
         self.exec(self.parent.mapToGlobal(point))
+
 
     def add_folder(self, is_folder: bool):
         if is_folder:

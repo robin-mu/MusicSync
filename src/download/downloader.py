@@ -1,5 +1,5 @@
 import os.path
-from pprint import pprint
+from collections import namedtuple
 
 import pandas as pd
 import yt_dlp
@@ -7,6 +7,7 @@ import yt_dlp
 from src.bookmark_library import BookmarkLibrary
 from src.music_sync_library import Collection, CollectionUrl, MusicSyncLibrary, Track, TrackSyncStatus
 
+RemoteInfo = namedtuple('RemoteInfo', ['url', 'title', 'playlist_index'])
 
 class MusicSyncDownloader(yt_dlp.YoutubeDL):
     DEFAULT_OPTIONS = {'final_ext': 'mp3',
@@ -28,8 +29,10 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                             'add_metadata': True,
                             'key': 'FFmpegMetadata'},
                            {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
-                       'compat_opts': ['no-youtube-unavailable-videos']
+                       'compat_opts': ['no-youtube-unavailable-videos'],
+                       'quiet': True
                        }
+
 
     def __init__(self, params=None, auto_init=True):
         if params is None:
@@ -42,37 +45,43 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         if collection.sync_bookmark_file:
             bookmarks = BookmarkLibrary.create_from_path(collection.sync_bookmark_file)
             folder = bookmarks.go_to_path([e.id for e in collection.sync_bookmark_path]).get_all_bookmarks()
+            collection_urls = [c.url for c in collection.urls]
             for child in folder.values():
-                if child.url not in collection.urls:
+                if child.url not in collection_urls:
+                    print(f'New url {child.url}, name {child.bookmark_title} added to collection {collection.name}')
                     collection.urls.append(CollectionUrl(url=child.url,
                                                          name=child.bookmark_title if collection.sync_bookmark_title_as_url_name else ''))
 
-        sync_status = pd.DataFrame(columns=['collection', 'url_name', 'file_path', 'track_title', 'status', 'action'])
+        sync_status = pd.DataFrame(columns=['collection', 'url_name', 'playlist_index', 'file_path', 'track_title', 'status', 'action'])
 
         collection_base_dir = os.listdir(collection.folder_path)
 
         # download track info of all collection urls
-        for url in collection.urls:
-            info = self.extract_info(url.url, process=False)
-            url.name = info['title']
+        for coll_url in collection.urls:
+            info = self.extract_info(coll_url.url, process=False)
+            if not coll_url.name:
+                coll_url.name = info['title']
             is_playlist = info.get('_type') == 'playlist'
 
             if is_playlist:
                 entries = list(info['entries'])
-                remote_urls = [(e['url'], e['title']) for e in entries]
+                remote_infos = [RemoteInfo(url=e['url'], title=e['title'], playlist_index=str(i)) for i, e in enumerate(entries, start=1)]
                 info['entries'] = entries
             else:
-                remote_urls = [(info.get('original_url') or info.get('webpage_url'), info['title'])]
+                remote_infos = [RemoteInfo(url=info.get('original_url') or info.get('webpage_url'), title=info['title'], playlist_index='')]
 
             if collection.save_playlists_to_subfolders and is_playlist:
-                url_folder = os.path.join(collection.folder_path, url.name)
+                url_folder = os.path.join(collection.folder_path, coll_url.name)
                 url_folder_contents = os.listdir(url_folder) if os.path.isdir(url_folder) else []
             else:
                 url_folder = collection.folder_path
                 url_folder_contents = collection_base_dir
 
-            for local_track in url.tracks.values():
+
+            remote_urls = [info.url for info in remote_infos]
+            for local_track in coll_url.tracks.values():
                 if local_track.url not in remote_urls:
+                    print(f'Local track {local_track.url} not in remote urls')
                     if local_track.status == TrackSyncStatus.DOWNLOADED:
                         # 1. REMOVED_FROM_SOURCE: Track is not present in source, but was present in previous sync
                         local_track.status = TrackSyncStatus.REMOVED_FROM_SOURCE
@@ -80,16 +89,18 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                         # 2. LOCAL_FILE: File is not in the permanently downloaded files, and does not correspond to a source track
                         local_track.status = TrackSyncStatus.LOCAL_FILE
 
-            for remote_url, remote_title in remote_urls:
+            for remote_url, remote_title, remote_playlist_index in remote_infos:
                 # 3. ADDED_TO_SOURCE: Track is present in source, but was not present in previous sync
-                if remote_url not in url.tracks:
-                    url.tracks[remote_url] = Track(url=remote_url,
+                if remote_url not in coll_url.tracks:
+                    print(f'Remote url {remote_url} not in coll url')
+                    coll_url.tracks[remote_url] = Track(url=remote_url,
                                                    status=TrackSyncStatus.ADDED_TO_SOURCE,
                                                    title=remote_title,
-                                                   path=url_folder,)
+                                                   path=url_folder,
+                                                   playlist_index=remote_playlist_index)
                 else:
-                    local_track: Track = url.tracks[remote_url]
-                    if local_track.path not in url_folder_contents:
+                    local_track: Track = coll_url.tracks[remote_url]
+                    if os.path.basename(local_track.path) not in url_folder_contents:
                         # 4. NOT_DOWNLOADED: Track is present in source, was also present in previous sync, but corresponding file does not exist
                         local_track.status = TrackSyncStatus.NOT_DOWNLOADED
                     elif local_track.status != TrackSyncStatus.PERMANENTLY_DOWNLOADED:
@@ -98,12 +109,13 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                     # (Implicit) 6. PERMANENTLY_DOWNLOADED: File is present in the permanently downloaded files
 
 
-            df = pd.DataFrame(data={'collection': [collection.name] * len(url.tracks),
-                                    'url_name': [url.name or url.url] * len(url.tracks),
-                                    'file_path': [track.path for track in url.tracks.values()],
-                                    'track_title': [track.title for track in url.tracks.values()],
-                                    'status': [track.status for track in url.tracks.values()],
-                                    'action': [collection.sync_actions[track.status] for track in url.tracks.values()]
+            df = pd.DataFrame(data={'collection': [collection.name] * len(coll_url.tracks),
+                                    'url_name': [coll_url.name or coll_url.url] * len(coll_url.tracks),
+                                    'playlist_index': [track.playlist_index for track in coll_url.tracks.values()],
+                                    'file_path': [track.path for track in coll_url.tracks.values()],
+                                    'track_title': [track.title for track in coll_url.tracks.values()],
+                                    'status': [track.status for track in coll_url.tracks.values()],
+                                    'action': [collection.sync_actions[track.status] for track in coll_url.tracks.values()]
                                     })
             sync_status = pd.concat([sync_status, df]).reset_index(drop=True)
 

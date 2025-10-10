@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'music_sync.ui'
+# Form implementation generated from reading ui file 'ui/main.ui'
 #
 # Created by: PyQt6 UI code generator 6.9.1
 #
@@ -66,14 +66,21 @@ class Ui_MainWindow(object):
         self.sync_status_page.setObjectName("sync_status_page")
         self.gridLayout_3 = QtWidgets.QGridLayout(self.sync_status_page)
         self.gridLayout_3.setObjectName("gridLayout_3")
+        self.compare_button = QtWidgets.QPushButton(parent=self.sync_status_page)
+        self.compare_button.setObjectName("compare_button")
+        self.gridLayout_3.addWidget(self.compare_button, 1, 1, 1, 1)
         self.sync_button = QtWidgets.QPushButton(parent=self.sync_status_page)
+        self.sync_button.setEnabled(False)
         self.sync_button.setObjectName("sync_button")
-        self.gridLayout_3.addWidget(self.sync_button, 1, 1, 1, 1)
+        self.gridLayout_3.addWidget(self.sync_button, 1, 2, 1, 1)
         self.sync_status_table = QtWidgets.QTableView(parent=self.sync_status_page)
+        self.sync_status_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.sync_status_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.sync_status_table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.sync_status_table.setObjectName("sync_status_table")
-        self.gridLayout_3.addWidget(self.sync_status_table, 0, 0, 1, 2)
-        self.gridLayout_3.setColumnStretch(0, 5)
-        self.gridLayout_3.setColumnStretch(1, 1)
+        self.sync_status_table.verticalHeader().setVisible(False)
+        self.gridLayout_3.addWidget(self.sync_status_table, 0, 0, 1, 3)
+        self.gridLayout_3.setColumnStretch(0, 1)
         self.sync_stack.addWidget(self.sync_status_page)
         self.gridLayout_2.addWidget(self.sync_stack, 1, 0, 1, 1)
         self.tabWidget.addTab(self.sync_tab, "")
@@ -446,7 +453,7 @@ class Ui_MainWindow(object):
 
         self.retranslateUi(MainWindow)
         self.tabWidget.setCurrentIndex(0)
-        self.sync_stack.setCurrentIndex(0)
+        self.sync_stack.setCurrentIndex(1)
         self.metadata_stack.setCurrentIndex(1)
         self.tags_stack.setCurrentIndex(0)
         self.settings_stack.setCurrentIndex(1)
@@ -456,6 +463,7 @@ class Ui_MainWindow(object):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MusicSync"))
         self.label_8.setText(_translate("MainWindow", "Select a collection to sync it"))
+        self.compare_button.setText(_translate("MainWindow", "Compare"))
         self.sync_button.setText(_translate("MainWindow", "Sync"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.sync_tab), _translate("MainWindow", "File sync status"))
         self.label_10.setText(_translate("MainWindow", "Select a collection to edit its metadata"))

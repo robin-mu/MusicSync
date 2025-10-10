@@ -76,30 +76,68 @@ class Folder(XmlObject):
 
 
 class TrackSyncStatus(StrEnum):
-    ADDED_TO_SOURCE = auto()
+    ADDED_TO_SOURCE = auto(), 'Added to source', 'Track is present in source, but was not present in previous sync'
     """
     Track is present in source, but was not present in previous sync
     """
-    NOT_DOWNLOADED = auto()
+    NOT_DOWNLOADED = auto(), 'Not downloaded', 'Track is present in source, was also present in previous sync, but corresponding file does not exist'
     """
     Track is present in source, was also present in previous sync, but corresponding file does not exist
     """
-    REMOVED_FROM_SOURCE = auto()
+    REMOVED_FROM_SOURCE = auto(), 'Removed from source', 'Track is not present in source, but was present in previous sync'
     """
     Track is not present in source, but was present in previous sync
     """
-    LOCAL_FILE = auto()
+    LOCAL_FILE = auto(), 'Local file', 'File is not in the permanently downloaded files, and does not correspond to a source track'
     """
     File is not in the permanently downloaded files, and does not correspond to a source track
     """
-    PERMANENTLY_DOWNLOADED = auto()
+    PERMANENTLY_DOWNLOADED = auto(), 'Permanently downloaded', 'File is present in the permanently downloaded files'
     """
     File is present in the permanently downloaded files
     """
-    DOWNLOADED = auto()
+    DOWNLOADED = auto(), 'Downloaded', 'Track is present in source and the corresponding file exists'
     """
     Track is present in source and the corresponding file exists
     """
+    @staticmethod
+    def action_options():
+        return {
+            TrackSyncStatus.ADDED_TO_SOURCE: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
+                                              TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.NOT_DOWNLOADED: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
+                                             TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.REMOVED_FROM_SOURCE: [TrackSyncAction.DELETE, TrackSyncAction.DO_NOTHING,
+                                                  TrackSyncAction.KEEP_PERMANENTLY,
+                                                  TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.LOCAL_FILE: [TrackSyncAction.DELETE, TrackSyncAction.DO_NOTHING,
+                                         TrackSyncAction.KEEP_PERMANENTLY, TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.PERMANENTLY_DOWNLOADED: [TrackSyncAction.DO_NOTHING,
+                                                     TrackSyncAction.REMOVE_FROM_PERMANENTLY_DOWNLOADED,
+                                                     TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.DOWNLOADED: [TrackSyncAction.DO_NOTHING, TrackSyncAction.DOWNLOAD,
+                                         TrackSyncAction.DECIDE_INDIVIDUALLY],
+        }
+
+    def __new__(cls, value, gui_string, gui_status_tip):
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._sort_key = len(cls.__members__)
+        obj._gui_string = gui_string
+        obj._gui_status_tip = gui_status_tip
+        return obj
+
+    @property
+    def sort_key(self) -> int:
+        return self._sort_key
+
+    @property
+    def gui_string(self) -> str:
+        return self._gui_string
+
+    @property
+    def gui_status_tip(self) -> str:
+        return self._gui_status_tip
 
 
 class TrackSyncAction(StrEnum):
@@ -127,7 +165,6 @@ class TrackSyncAction(StrEnum):
     """
     Let the user decide in each case. Syncing can only start when none of the selected actions are ``DECIDE_INDIVIDUALLY``
     """
-
     def __new__(cls, value, gui_string, gui_status_tip):
         obj = str.__new__(cls, value)
         obj._value_ = value
@@ -147,6 +184,7 @@ class TrackSyncAction(StrEnum):
     @property
     def gui_status_tip(self) -> str:
         return self._gui_status_tip
+
 
 @dataclass
 class MetadataField(XmlObject):
@@ -177,7 +215,6 @@ class MetadataField(XmlObject):
             suggestions.append(MetadataSuggestion.from_xml(child))
 
         return MetadataField(**(el.attrib | {'suggestions': suggestions}))
-
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
@@ -224,6 +261,7 @@ class ExternalMetadataTable(XmlObject):
     def from_xml(el: Element) -> 'ExternalMetadataTable':
         return ExternalMetadataTable(id=int(el.attrib['id']), name=el.attrib['name'], path=el.attrib['path'])
 
+
 @dataclass
 class FileTag(XmlObject):
     name: str
@@ -252,46 +290,46 @@ class Collection(XmlObject):
     # 0_field for suggestion from this table column with name "field"
     # 1_field for suggestion from external table with id 1 and column with name "field"
     DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataField']] = [
-            MetadataField('title', suggestions=[
-                MetadataSuggestion('0_title'),
-                MetadataSuggestion('track'),
-                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
-                MetadataSuggestion('title', '["“](.+)["“]'),
-                MetadataSuggestion('title')
-            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataField('artist', suggestions=[
-                MetadataSuggestion('0_artist'),
-                MetadataSuggestion('artist', split_separators=r'\,'),
-                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙',),
-                MetadataSuggestion('title', ' by (.+)'),
-                MetadataSuggestion('channel'),
-                MetadataSuggestion('title')
-            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataField('album', suggestions=[
-                MetadataSuggestion('0_album'),
-                MetadataSuggestion('album'),
-                MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
-            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataField('track', suggestions=[
-                MetadataSuggestion('0_track'),
-                MetadataSuggestion('track'),
-                MetadataSuggestion('playlist_index'),
-            ], enabled=False),
-            MetadataField('lyrics', suggestions=[
-                MetadataSuggestion('0_lyrics'),
-                MetadataSuggestion('lyrics'),
-                MetadataSuggestion('EXT_LYRICS:%(0_artist,artist&{} - )s%(0_title,track,title)')
-            ], enabled=False, timed_data=True),
-            MetadataField('chapters', suggestions=[
-                MetadataSuggestion('0_chapters'),
-                MetadataSuggestion('chapters+multi_video:%(title)s'),
-            ], enabled=False, timed_data=True),
-            MetadataField('thumbnail', suggestions=[
-                MetadataSuggestion('0_thumbnail'),
-                MetadataSuggestion('%(thumbnails.-1.url)s'),
-                MetadataSuggestion('%(thumbnails.2.url)s'),
-            ], enabled=False)
-        ]
+        MetadataField('title', suggestions=[
+            MetadataSuggestion('0_title'),
+            MetadataSuggestion('track'),
+            MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
+            MetadataSuggestion('title', '["“](.+)["“]'),
+            MetadataSuggestion('title')
+        ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+        MetadataField('artist', suggestions=[
+            MetadataSuggestion('0_artist'),
+            MetadataSuggestion('artist', split_separators=r'\,'),
+            MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', ),
+            MetadataSuggestion('title', ' by (.+)'),
+            MetadataSuggestion('channel'),
+            MetadataSuggestion('title')
+        ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+        MetadataField('album', suggestions=[
+            MetadataSuggestion('0_album'),
+            MetadataSuggestion('album'),
+            MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
+        ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+        MetadataField('track', suggestions=[
+            MetadataSuggestion('0_track'),
+            MetadataSuggestion('track'),
+            MetadataSuggestion('playlist_index'),
+        ], enabled=False),
+        MetadataField('lyrics', suggestions=[
+            MetadataSuggestion('0_lyrics'),
+            MetadataSuggestion('lyrics'),
+            MetadataSuggestion('EXT_LYRICS:%(0_artist,artist&{} - )s%(0_title,track,title)')
+        ], enabled=False, timed_data=True),
+        MetadataField('chapters', suggestions=[
+            MetadataSuggestion('0_chapters'),
+            MetadataSuggestion('chapters+multi_video:%(title)s'),
+        ], enabled=False, timed_data=True),
+        MetadataField('thumbnail', suggestions=[
+            MetadataSuggestion('0_thumbnail'),
+            MetadataSuggestion('%(thumbnails.-1.url)s'),
+            MetadataSuggestion('%(thumbnails.2.url)s'),
+        ], enabled=False)
+    ]
 
     DEFAULT_FILE_TAGS: ClassVar[list['FileTag']] = [
         FileTag('title', '0_title'),
@@ -317,7 +355,6 @@ class Collection(XmlObject):
     metadata_suggestions: list[
         'MetadataField'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
     file_tags: list[FileTag] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_FILE_TAGS))
-
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -420,7 +457,7 @@ class CollectionUrl(XmlObject):
             if child.tag == 'Track':
                 track = Track.from_xml(child)
                 tracks[track.url] = track
-        return CollectionUrl(**el.attrib)
+        return CollectionUrl(**el.attrib, tracks=tracks)
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
@@ -439,7 +476,9 @@ class Track(XmlObject):
     status: TrackSyncStatus
     title: str
     path: str
+    playlist_index: str = ''
     permanently_downloaded: bool = False
+
 
     def __post_init__(self):
         if isinstance(self.permanently_downloaded, str):
@@ -447,19 +486,18 @@ class Track(XmlObject):
 
     @staticmethod
     def from_xml(el: Element) -> 'Track':
-        return Track(url=el.attrib['url'], status=TrackSyncStatus.__members__[el.attrib['last_status']],
-                     path=el.attrib['path'], title=el.attrib['title'],
+        return Track(url=el.attrib['url'], status=TrackSyncStatus.__members__[el.attrib['status']],
+                     path=el.attrib['path'], title=el.attrib['title'], playlist_index=el.attrib['playlist_index'],
                      permanently_downloaded=el.attrib['permanently_downloaded'])
 
     def to_xml(self) -> Element:
-        return et.Element('Track', url=self.url, last_status=self.status.name, path=self.path,
+        return et.Element('Track', url=self.url, status=self.status.name, path=self.path,
                           permanently_downloaded=str(self.permanently_downloaded),
-                          title=self.title)
+                          title=self.title, playlist_index=self.playlist_index)
 
 
 if __name__ == '__main__':
     # print(MusicSyncLibrary().read_xml('../library.xml').children[0].children[0].update_sync_status())
-
 
     info = {
         'ext': 'mp3',
@@ -470,7 +508,8 @@ if __name__ == '__main__':
     }
     # FFmpegMetadataPP(None).run(info)
 
-    info = MetadataParserPP(YoutubeDL(), [(MetadataParserPP.Actions.INTERPRET, '%(title.::-1)s (%(test).2f)', '%(artist)s - %(title)s'),
+    info = MetadataParserPP(YoutubeDL(), [(MetadataParserPP.Actions.INTERPRET, '%(title.::-1)s (%(test).2f)',
+                                           '%(artist)s - %(title)s'),
                                           (MetadataParserPP.Actions.REPLACE, 'title', r'\((.+)\)', r'-\1-')]).run(info)
 
     ydl_opts = {'final_ext': 'mp3',
@@ -496,7 +535,7 @@ if __name__ == '__main__':
                                     'key': 'FFmpegMetadata'},
                                    {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
                 'compat_opts': ['no-youtube-unavailable-videos']
-            }
+                }
 
     ydl = YoutubeDL(ydl_opts)
     info = ydl.extract_info('https://www.youtube.com/watch?v=53bZSTSLUqI', download=False)
