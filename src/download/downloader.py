@@ -60,7 +60,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         for coll_url in collection.urls:
             info = self.extract_info(coll_url.url, process=False)
             if not coll_url.name:
-                coll_url.name = info['title']
+                coll_url.name = self.evaluate_outtmpl(collection.url_name_format or Collection.DEFAULT_URL_NAME_FORMAT, info)
             is_playlist = info.get('_type') == 'playlist'
 
             if is_playlist:

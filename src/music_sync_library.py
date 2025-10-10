@@ -342,6 +342,9 @@ class Collection(XmlObject):
         FileTag('thumbnail', '0_thumbnail'),
     ]
 
+    DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
+    DEFAULT_URL_NAME_FORMAT: ClassVar[str] = '%(title)s'
+
     PathComponent = namedtuple('PathComponent', ['id', 'name'])
 
     name: str

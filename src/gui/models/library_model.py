@@ -110,7 +110,9 @@ class CollectionUrlItem(XmlObjectModelItem):
         self.url = collection_url.url
         self.tracks = collection_url.tracks
         self.excluded = collection_url.excluded
-        self.setText(collection_url.name)
+
+        if not self.text():
+            self.setText(collection_url.name)
 
 
 class LibraryModel(XmlObjectModel):

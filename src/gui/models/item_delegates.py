@@ -51,8 +51,6 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
         model.setData(index, self.to_model_data(editor.currentText()))
 
     def eventFilter(self, obj, event):
-        if event.type() != QEvent.Type.Paint:
-            print(QEvent.Type(event.type()).name)
         if event.type() in (QEvent.Type.HoverMove, QEvent.Type.HoverEnter, QEvent.Type.MouseButtonPress):
             self.parent.statusbar.showMessage(self.get_status_bar_text(obj.currentIndex(), obj))
         if event.type() in (QEvent.Type.Hide, QEvent.Type.FocusIn, QEvent.Type.HoverLeave):
