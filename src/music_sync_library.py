@@ -2,13 +2,13 @@ import xml.etree.ElementTree as et
 from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass, field
-from enum import auto, StrEnum
+from enum import StrEnum, auto
 from pprint import pprint
-from typing import Union, ClassVar, Any
+from typing import Any, ClassVar, Union
 from xml.etree.ElementTree import Element
 
 import yt_dlp
-from yt_dlp import YoutubeDL, MetadataParserPP
+from yt_dlp import MetadataParserPP, YoutubeDL
 
 from src.xml_object import XmlObject
 
@@ -76,29 +76,29 @@ class Folder(XmlObject):
 
 
 class TrackSyncStatus(StrEnum):
-    ADDED_TO_SOURCE = auto(), 'Added to source', 'Track is present in source, but was not present in previous sync'
+    ADDED_TO_SOURCE = auto(), 'Track added to collection', 'Track is present online, but was not present in the previous sync.'
     """
-    Track is present in source, but was not present in previous sync
+    Track is present online, but was not present in the previous sync.
     """
-    NOT_DOWNLOADED = auto(), 'Not downloaded', 'Track is present in source, was also present in previous sync, but corresponding file does not exist'
+    NOT_DOWNLOADED = auto(), 'Track not downloaded', 'Track is present online, was also present in previous sync, but the corresponding file does not exist.'
     """
-    Track is present in source, was also present in previous sync, but corresponding file does not exist
+    Track is present online, was also present in previous sync, but the corresponding file does not exist.
     """
-    REMOVED_FROM_SOURCE = auto(), 'Removed from source', 'Track is not present in source, but was present in previous sync'
+    REMOVED_FROM_SOURCE = auto(), 'Track removed from collection', 'Track is not present online, but was present in the previous sync.'
     """
-    Track is not present in source, but was present in previous sync
+    Track is not present online, but was present in the previous sync.
     """
-    LOCAL_FILE = auto(), 'Local file', 'File is not in the permanently downloaded files, and does not correspond to a source track'
+    LOCAL_FILE = auto(), 'File only exists locally', 'The file is not in the permanently downloaded files and does not correspond to a track found online.'
     """
-    File is not in the permanently downloaded files, and does not correspond to a source track
+    The file is not in the permanently downloaded files and does not correspond to a track found online.
     """
-    PERMANENTLY_DOWNLOADED = auto(), 'Permanently downloaded', 'File is present in the permanently downloaded files'
+    PERMANENTLY_DOWNLOADED = auto(), 'File permanently downloaded', 'The file is marked as permanently downloaded'
     """
-    File is present in the permanently downloaded files
+    The file is marked as permanently downloaded
     """
-    DOWNLOADED = auto(), 'Downloaded', 'Track is present in source and the corresponding file exists'
+    DOWNLOADED = auto(), 'File downloaded', 'Track is present online and the corresponding file exists'
     """
-    Track is present in source and the corresponding file exists
+    Track is present online and the corresponding file exists
     """
     @staticmethod
     def action_options():
@@ -141,29 +141,29 @@ class TrackSyncStatus(StrEnum):
 
 
 class TrackSyncAction(StrEnum):
-    DOWNLOAD = auto(), 'Download', 'Download the file'
+    DOWNLOAD = auto(), 'Download', 'Download the file.'
     """
-    Download the file
+    Download the file.
     """
-    DELETE = auto(), 'Delete the file', 'Delete the file'
+    DELETE = auto(), 'Delete', 'Delete the file and remove the track entry from the collection.'
     """
-    Delete the file
+    Delete the file.
     """
-    DO_NOTHING = auto(), 'Do nothing', 'Don\'t delete or download any file and don\'t change the configuration'
+    DO_NOTHING = auto(), 'Do nothing', 'Don\'t delete or download a file and don\'t change the configuration.'
     """
-    Don't delete or download any file and don't change the configuration. Effectively does nothing
+    Don't delete or download a file and don't change the configuration. Effectively does nothing.
     """
-    KEEP_PERMANENTLY = auto(), 'Add file to permanently downloaded files', 'Don\'t delete the file and add it to the list of permanently downloaded files saved in the collection settings'
+    KEEP_PERMANENTLY = auto(), 'Mark as permanently downloaded', 'Don\'t delete the file and mark it as permanently downloaded. This means the file won\'t be marked as "not downloaded" or "removed from collection" in the future.'
     """
-    Don't delete the file and add it to the list of permanently downloaded files
+    Don't delete the file and mark it as permanently downloaded. This means the file won't be marked as "not downloaded" or "removed from collection" in the future.
     """
-    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Remove file from permanently downloaded files', 'Remove the file from the list of permanently downloaded files (but don\'t delete the file)'
+    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Mark as not permanently downloaded', 'Mark the file as not permanently downloaded (but don\'t delete the file).'
     """
-    Remove the file from the list of permanently downloaded files (but don't delete the file)
+    Mark the file as not permanently downloaded (but don't delete the file).
     """
-    DECIDE_INDIVIDUALLY = auto(), 'Decide individually', 'You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually"'
+    DECIDE_INDIVIDUALLY = auto(), 'Decide individually', 'You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".'
     """
-    Let the user decide in each case. Syncing can only start when none of the selected actions are ``DECIDE_INDIVIDUALLY``
+    You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".
     """
     def __new__(cls, value, gui_string, gui_status_tip):
         obj = str.__new__(cls, value)

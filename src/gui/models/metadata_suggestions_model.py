@@ -3,7 +3,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from PySide6 import QtCore
-from PySide6.QtCore import QModelIndex, QAbstractTableModel
+from PySide6.QtCore import QAbstractTableModel, QModelIndex
 
 from src.music_sync_library import MetadataSuggestion
 
@@ -75,10 +75,14 @@ class MetadataSuggestionsModel(QAbstractTableModel):
             return None
 
     def headerData(self, section, orientation, /, role=...):
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return str(MetadataSuggestionsTableColumn(section))
-        if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-            return MetadataSuggestionsTableColumn(section).tool_tip()
+        if orientation == QtCore.Qt.Orientation.Horizontal:
+            if role == QtCore.Qt.ItemDataRole.DisplayRole:
+                return str(MetadataSuggestionsTableColumn(section))
+            if role == QtCore.Qt.ItemDataRole.ToolTipRole:
+                return MetadataSuggestionsTableColumn(section).tool_tip()
+        elif orientation == QtCore.Qt.Orientation.Vertical:
+            if role == QtCore.Qt.ItemDataRole.DisplayRole:
+                return str(section + 1)
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):

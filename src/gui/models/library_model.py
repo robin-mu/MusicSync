@@ -4,8 +4,8 @@ from xml.etree.ElementTree import Element
 
 from PySide6.QtGui import QIcon
 
-from src.gui.models.xml_model import XmlObjectModelItem, XmlObjectModel
-from src.music_sync_library import MusicSyncLibrary, Folder, Collection, CollectionUrl, ExternalMetadataTable, Track
+from src.gui.models.xml_model import XmlObjectModel, XmlObjectModelItem
+from src.music_sync_library import Collection, CollectionUrl, ExternalMetadataTable, Folder, MusicSyncLibrary, Track
 
 
 class FolderItem(XmlObjectModelItem):
@@ -75,7 +75,7 @@ class CollectionUrlItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
         self.url: str = kwargs['url']
-        self.tracks: list['Track'] = kwargs.get('tracks', [])
+        self.tracks: list[Track] = kwargs.get('tracks', [])
         self.excluded = kwargs.get('excluded', False)
 
         name = kwargs.get('name')
@@ -132,7 +132,7 @@ class LibraryModel(XmlObjectModel):
         if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
             return False
 
-        if isinstance(parent_item, CollectionItem) and (isinstance(item, FolderItem) or isinstance(item, CollectionItem)):
+        if isinstance(parent_item, CollectionItem) and (isinstance(item, (CollectionItem, FolderItem))):
             return False
 
         if isinstance(parent_item, CollectionUrlItem):

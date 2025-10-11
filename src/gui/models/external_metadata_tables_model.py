@@ -1,8 +1,8 @@
 from enum import IntEnum
 from typing import Any
 
-from PySide6.QtCore import QModelIndex
 from PySide6 import QtCore
+from PySide6.QtCore import QModelIndex
 
 from src.gui.models.metadata_fields_model import MetadataFieldsTableColumn
 from src.music_sync_library import ExternalMetadataTable

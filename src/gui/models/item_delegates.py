@@ -1,6 +1,6 @@
 from typing import Any
 
-from PySide6 import QtWidgets, QtCore
+from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QComboBox
 

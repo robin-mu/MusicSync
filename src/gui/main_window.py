@@ -1,19 +1,29 @@
 from copy import deepcopy
 
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QItemSelection, QEvent, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QDesktopServices
-from PySide6.QtWidgets import QMainWindow, QMenu, QFileDialog, QMessageBox, QInputDialog, QTreeWidgetItem, QTreeWidget, \
-    QDialogButtonBox, QTreeView, QApplication
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialogButtonBox,
+    QFileDialog,
+    QInputDialog,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QTreeView,
+    QTreeWidget,
+    QTreeWidgetItem,
+)
 
 from src.download.downloader import MusicSyncDownloader
 from src.gui.bookmark_dialog import BookmarkDialog
 from src.gui.main_gui import Ui_MainWindow
 from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
-from src.gui.models.file_sync_model import FileSyncModel, FileSyncModelColumn, ActionComboboxDelegate
-from src.gui.models.library_model import LibraryModel, FolderItem, CollectionItem, CollectionUrlItem
+from src.gui.models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
+from src.gui.models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from src.gui.models.sync_action_combobox_model import SyncActionComboboxModel
-from src.music_sync_library import TrackSyncStatus, ExternalMetadataTable, CollectionUrl, TrackSyncAction
+from src.music_sync_library import CollectionUrl, ExternalMetadataTable, TrackSyncAction, TrackSyncStatus
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -399,6 +409,11 @@ class TreeContextMenu(QMenu):
             delete_action = QAction('Delete')
             delete_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete))
             delete_action.triggered.connect(self.remove)
+
+            if isinstance(self.item, CollectionUrlItem) and self.item.parent().sync_bookmark_file:
+                delete_action.setToolTip('This collection is synchronized with a bookmarks folder, so manually deleting URLs is not possible')
+                delete_action.setEnabled(False)
+
             self.addAction(delete_action)
 
         self.setToolTipsVisible(True)

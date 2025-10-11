@@ -7,25 +7,24 @@ from PySide6.QtWidgets import QComboBox
 
 from src.gui.models.data_frame_model import DataFrameTableModel
 from src.gui.models.item_delegates import ComboBoxDelegate
-from src.music_sync_library import TrackSyncStatus, TrackSyncAction
+from src.music_sync_library import TrackSyncAction, TrackSyncStatus
 
 
 class FileSyncModelColumn(IntEnum):
     COLLECTION = 0
     URL_NAME = 1
-    PLAYLIST_INDEX = 2
-    FILE_PATH = 3
-    TRACK_TITLE = 4
-    STATUS = 5
-    ACTION = 6
+    FILE_PATH = 2
+    TRACK_TITLE = 3
+    STATUS = 4
+    ACTION = 5
+    COLLECTION_URL = 6
+    TRACK = 7
 
     def __str__(self):
         if self == FileSyncModelColumn.COLLECTION:
             return 'Collection'
         elif self == FileSyncModelColumn.URL_NAME:
             return 'URL Name'
-        elif self == FileSyncModelColumn.PLAYLIST_INDEX:
-            return 'Playlist Index'
         elif self == FileSyncModelColumn.FILE_PATH:
             return 'File Path'
         elif self == FileSyncModelColumn.TRACK_TITLE:
@@ -34,6 +33,10 @@ class FileSyncModelColumn(IntEnum):
             return 'Status'
         elif self == FileSyncModelColumn.ACTION:
             return 'Action'
+        elif self == FileSyncModelColumn.COLLECTION_URL:
+            return 'Collection URL Object'
+        elif self == FileSyncModelColumn.TRACK:
+            return 'Track Object'
         return None
 
 
@@ -45,6 +48,9 @@ class FileSyncModel(DataFrameTableModel):
                        key=lambda col: col.apply(lambda s: s.sort_key))
 
         DataFrameTableModel.__init__(self, df, parent)
+
+    def internal_columns(self) -> int:
+        return len([FileSyncModelColumn.TRACK, FileSyncModelColumn.COLLECTION_URL])
 
     def delegate_columns(self) -> list[int]:
         return [FileSyncModelColumn.ACTION]
@@ -63,7 +69,7 @@ class ActionComboboxDelegate(ComboBoxDelegate):
         ComboBoxDelegate.__init__(self, update_callback=update_callback, parent=parent)
 
     def to_model_data(self, val: str) -> TrackSyncAction:
-        return [a for a in TrackSyncAction.__members__.values() if a.gui_string == val][0]
+        return next(a for a in TrackSyncAction.__members__.values() if a.gui_string == val)
 
     def get_combobox_items(self, index: QModelIndex) -> list[str]:
         status_index = index.model().index(index.row(), FileSyncModelColumn.STATUS)
@@ -75,4 +81,4 @@ class ActionComboboxDelegate(ComboBoxDelegate):
         return index.model().data(index, role=QtCore.Qt.ItemDataRole.BackgroundRole).gui_string
 
     def get_status_bar_text(self, index, box: QComboBox) -> str:
-        return [a for a in TrackSyncAction.__members__.values() if a.gui_string == box.itemText(index)][0].gui_status_tip
+        return next(a for a in TrackSyncAction.__members__.values() if a.gui_string == box.itemText(index)).gui_status_tip

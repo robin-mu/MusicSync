@@ -2,7 +2,7 @@ import typing
 from xml.etree import ElementTree
 
 from PySide6 import QtCore
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from src.xml_object import XmlObject
 
@@ -12,11 +12,11 @@ class XmlObjectModelItem(QStandardItem):
         super().__init__()
 
     def to_xml_object(self) -> 'XmlObject':
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @staticmethod
     def from_xml_object(object: 'XmlObject') -> 'XmlObjectModelItem':
-        raise NotImplementedError()
+        raise NotImplementedError
 
 
 class XmlObjectModel(QStandardItemModel):
@@ -55,18 +55,17 @@ class XmlObjectModel(QStandardItemModel):
                 parent_item.insertRow(row, [item])
             else:
                 parent_item.appendRow(item)
+        elif row >= 0:
+            self.insertRow(row, item)
         else:
-            if row >= 0:
-                self.insertRow(row, item)
-            else:
-                self.appendRow(item)
+            self.appendRow(item)
 
         return True
 
     @classmethod
     def item_from_xml(cls, el: ElementTree.Element) -> 'XmlObjectModelItem':
-        raise NotImplementedError()
+        raise NotImplementedError
 
     @classmethod
     def validate_drop(cls, parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
-        raise NotImplementedError()
+        raise NotImplementedError

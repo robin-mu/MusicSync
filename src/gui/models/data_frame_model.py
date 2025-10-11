@@ -10,6 +10,12 @@ class DataFrameTableModel(QAbstractTableModel):
         self.parent = parent
         self.df = df
 
+    def internal_columns(self) -> int:
+        """
+        If this method returns n, the last n column will be considered internal and will not be displayed
+        """
+        return 0
+
     def delegate_columns(self) -> list[int]:
         return []
 
@@ -23,7 +29,7 @@ class DataFrameTableModel(QAbstractTableModel):
         return len(self.df)
 
     def columnCount(self, parent: QModelIndex = ...) -> int:
-        return len(self.df.columns)
+        return len(self.df.columns) - self.internal_columns()
 
     def data(self, index, /, role=QtCore.Qt.ItemDataRole.DisplayRole):
         if not index.isValid():

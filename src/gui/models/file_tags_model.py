@@ -1,8 +1,8 @@
 from enum import IntEnum
 from typing import Any
 
-from PySide6.QtCore import QModelIndex
 from PySide6 import QtCore
+from PySide6.QtCore import QModelIndex
 
 from src.music_sync_library import FileTag
 

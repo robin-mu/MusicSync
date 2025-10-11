@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QDialog, QTreeWidgetItem, QFileDialog, QDialogButtonBox
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFileDialog, QTreeWidgetItem
 
-from src.bookmark_library import BookmarkLibrary, BookmarkFolder, Bookmark
+from src.bookmark_library import Bookmark, BookmarkFolder, BookmarkLibrary
 from src.gui.bookmark_gui import Ui_Dialog
 
 
