@@ -20,7 +20,7 @@ class FileTagsTableColumn(IntEnum):
 
     def tool_tip(self):
         if self == FileTagsTableColumn.FORMAT:
-            return 'The format is the same as yt-dlp\'s output template'
+            return 'The format is the same as yt-dlp\'s output template. Data from tables can be referenced with "[id]:[field]".'
         return None
 
 

@@ -24,7 +24,7 @@ class ExternalMetadataTablesColumn(IntEnum):
 
     def tool_tip(self):
         if self == ExternalMetadataTablesColumn.ID:
-            return 'The ID is used to reference a table in suggestion generation. Use the syntax [id]_[field] to refer to a field of a table.'
+            return 'The ID is used to reference a table in suggestion generation. Use the syntax "[id]:[field]" to refer to a field of a table.'
         return None
 
 

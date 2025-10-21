@@ -40,7 +40,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
         # Library Tree View
-        self.treeView.setModel(LibraryModel('/home/robin/Desktop/Music-Sync/a.xml'))
+        self.treeView.setModel(LibraryModel('/home/robin/Desktop/MusicSync/a.xml'))
         self.treeView.expandAll()
 
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)

@@ -287,18 +287,16 @@ class Collection(XmlObject):
     }
 
     # field for suggestion from yt_dlp's metadata with name "field"
-    # 0_field for suggestion from this table column with name "field"
-    # 1_field for suggestion from external table with id 1 and column with name "field"
+    # 0:field for suggestion from this table column with name "field"
+    # 1:field for suggestion from external table with id 1 and column with name "field"
     DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataField']] = [
         MetadataField('title', suggestions=[
-            MetadataSuggestion('0_title'),
             MetadataSuggestion('track'),
             MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
             MetadataSuggestion('title', '["“](.+)["“]'),
             MetadataSuggestion('title')
         ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
         MetadataField('artist', suggestions=[
-            MetadataSuggestion('0_artist'),
             MetadataSuggestion('artist', split_separators=r'\,'),
             MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', ),
             MetadataSuggestion('title', ' by (.+)'),
@@ -306,40 +304,33 @@ class Collection(XmlObject):
             MetadataSuggestion('title')
         ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
         MetadataField('album', suggestions=[
-            MetadataSuggestion('0_album'),
             MetadataSuggestion('album'),
             MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
         ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
         MetadataField('track', suggestions=[
-            MetadataSuggestion('0_track'),
             MetadataSuggestion('track'),
             MetadataSuggestion('playlist_index'),
         ], enabled=False),
         MetadataField('lyrics', suggestions=[
-            MetadataSuggestion('0_lyrics'),
-            MetadataSuggestion('lyrics'),
-            MetadataSuggestion('EXT_LYRICS:%(0_artist,artist&{} - )s%(0_title,track,title)s')
+            MetadataSuggestion('EXT_LYRICS:%(0:artist,artist&{} - )s%(0:title,track,title)s')
         ], enabled=False, timed_data=True),
         MetadataField('chapters', suggestions=[
-            MetadataSuggestion('0_chapters'),
             MetadataSuggestion('%(chapters)s+MULTI_VIDEO:%(title)s'),
         ], enabled=False, timed_data=True),
         MetadataField('thumbnail', suggestions=[
-            MetadataSuggestion('0_thumbnail'),
             MetadataSuggestion('%(thumbnails.-1.url)s'),
             MetadataSuggestion('%(thumbnails.2.url)s'),
         ], enabled=False),
         MetadataField('timed_data', suggestions=[
-            MetadataSuggestion('0_timed_data'),
-            MetadataSuggestion('%(0_lyrics)s+%(0_chapters)s'),
+            MetadataSuggestion('%(0:lyrics)s+%(0:chapters)s'),
         ], enabled=False, timed_data=True),
     ]
 
     DEFAULT_FILE_TAGS: ClassVar[list['FileTag']] = [
-        FileTag('title', '0_title'),
-        FileTag('artist', '0_artist'),
-        FileTag('album', '0_album'),
-        FileTag('thumbnail', '0_thumbnail'),
+        FileTag('title', '0:title'),
+        FileTag('artist', '0:artist'),
+        FileTag('album', '0:album'),
+        FileTag('thumbnail', '0:thumbnail'),
     ]
 
     DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
