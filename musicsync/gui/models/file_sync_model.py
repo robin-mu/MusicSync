@@ -15,7 +15,7 @@ from music_sync_library import Collection, TrackSyncAction, TrackSyncStatus
 class FileSyncModelColumn(IntEnum):
     COLLECTION = 0
     URL_NAME = 1
-    FILE_PATH = 2
+    FILENAME = 2
     TRACK_TITLE = 3
     STATUS = 4
     ACTION = 5
@@ -27,8 +27,8 @@ class FileSyncModelColumn(IntEnum):
             return 'Collection'
         elif self == FileSyncModelColumn.URL_NAME:
             return 'URL Name'
-        elif self == FileSyncModelColumn.FILE_PATH:
-            return 'File Path'
+        elif self == FileSyncModelColumn.FILENAME:
+            return 'Filename'
         elif self == FileSyncModelColumn.TRACK_TITLE:
             return 'Track Title'
         elif self == FileSyncModelColumn.STATUS:
@@ -70,12 +70,12 @@ class FileSyncModel(DataFrameTableModel):
     @staticmethod
     def collection_to_df(collection: Collection) -> pd.DataFrame:
         df = pd.DataFrame(
-            columns=['collection', 'url_name', 'file_path', 'track_title', 'status', 'action', 'collection_url',
+            columns=['collection', 'url_name', 'filename', 'track_title', 'status', 'action', 'collection_url',
                      'track'])
         for url in collection.urls:
             url_df = pd.DataFrame.from_records([{'collection': collection.name,
                                                  'url_name': url.name,
-                                                 'file_path': track.path,
+                                                 'filename': track.filename,
                                                  'track_title': track.title,
                                                  'status': track.status,
                                                  'action': collection.sync_actions[track.status],

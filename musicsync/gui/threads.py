@@ -1,4 +1,4 @@
-from PySide6.QtCore import Slot, Signal, QRunnable, QObject
+from PySide6.QtCore import Signal, QRunnable, QObject
 
 
 class ThreadingSignals(QObject):
@@ -14,7 +14,6 @@ class ThreadingWorker(QRunnable):
         self.kwargs = kwargs
         self.signals = ThreadingSignals()
 
-    @Slot()
     def run(self):
         result = self.func(*self.args, progress_callback=self.emit_progress, **self.kwargs)
         self.signals.result.emit((result, self.extra))

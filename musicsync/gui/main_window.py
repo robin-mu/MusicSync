@@ -193,7 +193,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.statusbar.clearMessage()
 
-    def save_settings(self, item: CollectionItem = None):
+    def save_settings(self, item: CollectionItem | None = None):
         if item is None:
             item = self.treeView.model().itemFromIndex(self.treeView.currentIndex())
         if item is None or isinstance(item, FolderItem):
@@ -228,7 +228,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return current_collection
 
 
-    def update_current_sync_folder(self, file: str, path: list[tuple[str, str]]=None, set_url_name=False):
+    def update_current_sync_folder(self, file: str, path: list[tuple[str, str]] | None=None, set_url_name=False):
+        if path is None:
+            path = []
+
         current_collection = self.get_selected_collection()
         current_collection.sync_bookmark_file = file
         current_collection.sync_bookmark_path = path or []
@@ -302,7 +305,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
 
-    def compare_finished(self, result):
+    def compare_finished(self, result: tuple):
         _, extra = result
         selected_collection = extra['selected_collection']
         selected_collection_xml = extra['selected_collection_xml']

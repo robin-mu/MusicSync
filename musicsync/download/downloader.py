@@ -132,13 +132,13 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                 if remote_url not in coll_url.tracks:
                     logger.debug(f'Remote url {remote_url} not in collection url tracks')
                     coll_url.tracks[remote_url] = lib.Track(url=remote_url,
-                                                        status=lib.TrackSyncStatus.ADDED_TO_SOURCE,
-                                                        title=remote_title,
-                                                        path=url_folder,
-                                                        playlist_index=remote_playlist_index)
+                                                            status=lib.TrackSyncStatus.ADDED_TO_SOURCE,
+                                                            title=remote_title,
+                                                            filename='',
+                                                            playlist_index=remote_playlist_index)
                 else:
                     local_track: lib.Track = coll_url.tracks[remote_url]
-                    if os.path.basename(local_track.path) not in url_folder_contents:
+                    if local_track.filename not in url_folder_contents:
                         # 4. NOT_DOWNLOADED: Track is present in source, was also present in previous sync, but corresponding file does not exist
                         local_track.status = lib.TrackSyncStatus.NOT_DOWNLOADED
                     elif local_track.status != lib.TrackSyncStatus.PERMANENTLY_DOWNLOADED:
@@ -165,8 +165,13 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         for row in delete[['track', 'collection_url']].itertuples():
             track: lib.Track = row.track
             url: lib.CollectionUrl = row.collection_url
-            if os.path.isfile(track.path):
-                os.remove(track.path)
+            path = self.collection.folder_path
+            if self.collection.save_playlists_to_subfolders:
+                path = os.path.join(path, url.name)
+            path = os.path.join(path, track.filename)
+
+            if os.path.isfile(path):
+                os.remove(path)
             url.tracks.pop(track.url)
 
         # 4. DOWNLOAD

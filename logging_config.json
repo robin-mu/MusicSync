@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "ms_formatter": {
+      "format": "[%(asctime)s] [%(levelname)s] %(message)s",
+      "datefmt": "%Y-%m-%d %H:%M:%S"
+    }
+  },
+  "handlers": {
+    "file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "DEBUG",
+      "formatter": "ms_formatter",
+      "filename": "logs/music_sync.log",
+      "maxBytes": 5000000,
+      "backupCount": 5
+    },
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "DEBUG",
+      "formatter": "ms_formatter",
+      "stream": "ext://sys.stdout"
+    }
+  },
+  "loggers": {
+    "root": {
+      "level": "DEBUG",
+      "handlers": ["file", "console"]
+    }
+  }
+}

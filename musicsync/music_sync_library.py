@@ -494,7 +494,7 @@ class Track(XmlObject):
     url: str
     status: TrackSyncStatus
     title: str
-    path: str
+    filename: str = ''
     playlist_index: str = ''
     permanently_downloaded: bool = False
 
@@ -505,11 +505,11 @@ class Track(XmlObject):
     @staticmethod
     def from_xml(el: Element) -> 'Track':
         return Track(url=el.attrib['url'], status=TrackSyncStatus.__members__[el.attrib['status']],
-                     path=el.attrib['path'], title=el.attrib['title'], playlist_index=el.attrib['playlist_index'],
+                     filename=el.attrib['path'], title=el.attrib['title'], playlist_index=el.attrib['playlist_index'],
                      permanently_downloaded=el.attrib['permanently_downloaded'])
 
     def to_xml(self) -> Element:
-        return et.Element('Track', url=self.url, status=self.status.name, path=self.path,
+        return et.Element('Track', url=self.url, status=self.status.name, path=self.filename,
                           permanently_downloaded=str(self.permanently_downloaded),
                           title=self.title, playlist_index=self.playlist_index)
 
