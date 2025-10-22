@@ -1,16 +1,17 @@
 import xml.etree.ElementTree as et
 from collections import namedtuple
-from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pprint import pprint
-from typing import Any, ClassVar, Union
+from typing import Any, ClassVar, Union, Callable
 from xml.etree.ElementTree import Element
 
 import yt_dlp
 from yt_dlp import MetadataParserPP, YoutubeDL
 
-from src.xml_object import XmlObject
+import download.downloader
+from xml_object import XmlObject
+from utils import classproperty
 
 
 @dataclass
@@ -100,6 +101,7 @@ class TrackSyncStatus(StrEnum):
     """
     Track is present online and the corresponding file exists
     """
+
     @staticmethod
     def action_options():
         return {
@@ -165,6 +167,7 @@ class TrackSyncAction(StrEnum):
     """
     You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".
     """
+
     def __new__(cls, value, gui_string, gui_status_tip):
         obj = str.__new__(cls, value)
         obj._value_ = value
@@ -277,61 +280,67 @@ class FileTag(XmlObject):
 
 @dataclass
 class Collection(XmlObject):
-    DEFAULT_SYNC_ACTIONS: ClassVar[dict[TrackSyncStatus, TrackSyncAction]] = {
-        TrackSyncStatus.ADDED_TO_SOURCE: TrackSyncAction.DOWNLOAD,
-        TrackSyncStatus.NOT_DOWNLOADED: TrackSyncAction.DOWNLOAD,
-        TrackSyncStatus.REMOVED_FROM_SOURCE: TrackSyncAction.DECIDE_INDIVIDUALLY,
-        TrackSyncStatus.LOCAL_FILE: TrackSyncAction.DO_NOTHING,
-        TrackSyncStatus.PERMANENTLY_DOWNLOADED: TrackSyncAction.DO_NOTHING,
-        TrackSyncStatus.DOWNLOADED: TrackSyncAction.DO_NOTHING,
-    }
+    @classproperty
+    def DEFAULT_SYNC_ACTIONS(self) -> dict[TrackSyncStatus, TrackSyncAction]:
+        return {
+            TrackSyncStatus.ADDED_TO_SOURCE: TrackSyncAction.DOWNLOAD,
+            TrackSyncStatus.NOT_DOWNLOADED: TrackSyncAction.DOWNLOAD,
+            TrackSyncStatus.REMOVED_FROM_SOURCE: TrackSyncAction.DECIDE_INDIVIDUALLY,
+            TrackSyncStatus.LOCAL_FILE: TrackSyncAction.DO_NOTHING,
+            TrackSyncStatus.PERMANENTLY_DOWNLOADED: TrackSyncAction.DO_NOTHING,
+            TrackSyncStatus.DOWNLOADED: TrackSyncAction.DO_NOTHING,
+        }
 
     # field for suggestion from yt_dlp's metadata with name "field"
     # 0:field for suggestion from this table column with name "field"
     # 1:field for suggestion from external table with id 1 and column with name "field"
-    DEFAULT_METADATA_SUGGESTIONS: ClassVar[list['MetadataField']] = [
-        MetadataField('title', suggestions=[
-            MetadataSuggestion('track'),
-            MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
-            MetadataSuggestion('title', '["“](.+)["“]'),
-            MetadataSuggestion('title')
-        ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-        MetadataField('artist', suggestions=[
-            MetadataSuggestion('artist', split_separators=r'\,'),
-            MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', ),
-            MetadataSuggestion('title', ' by (.+)'),
-            MetadataSuggestion('channel'),
-            MetadataSuggestion('title')
-        ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-        MetadataField('album', suggestions=[
-            MetadataSuggestion('album'),
-            MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
-        ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-        MetadataField('track', suggestions=[
-            MetadataSuggestion('track'),
-            MetadataSuggestion('playlist_index'),
-        ], enabled=False),
-        MetadataField('lyrics', suggestions=[
-            MetadataSuggestion('EXT_LYRICS:%(0:artist,artist&{} - )s%(0:title,track,title)s')
-        ], enabled=False, timed_data=True),
-        MetadataField('chapters', suggestions=[
-            MetadataSuggestion('%(chapters)s+MULTI_VIDEO:%(title)s'),
-        ], enabled=False, timed_data=True),
-        MetadataField('thumbnail', suggestions=[
-            MetadataSuggestion('%(thumbnails.-1.url)s'),
-            MetadataSuggestion('%(thumbnails.2.url)s'),
-        ], enabled=False),
-        MetadataField('timed_data', suggestions=[
-            MetadataSuggestion('%(0:lyrics)s+%(0:chapters)s'),
-        ], enabled=False, timed_data=True),
-    ]
+    @classproperty
+    def DEFAULT_METADATA_SUGGESTIONS(self) -> list['MetadataField']:
+        return [
+            MetadataField('title', suggestions=[
+                MetadataSuggestion('track'),
+                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
+                MetadataSuggestion('title', '["“](.+)["“]'),
+                MetadataSuggestion('title')
+            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+            MetadataField('artist', suggestions=[
+                MetadataSuggestion('artist', split_separators=r'\,'),
+                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', ),
+                MetadataSuggestion('title', ' by (.+)'),
+                MetadataSuggestion('channel'),
+                MetadataSuggestion('title')
+            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+            MetadataField('album', suggestions=[
+                MetadataSuggestion('album'),
+                MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
+            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+            MetadataField('track', suggestions=[
+                MetadataSuggestion('track'),
+                MetadataSuggestion('playlist_index'),
+            ], enabled=False),
+            MetadataField('lyrics', suggestions=[
+                MetadataSuggestion('EXT_LYRICS:%(0:artist,artist&{} - )s%(0:title,track,title)s')
+            ], enabled=False, timed_data=True),
+            MetadataField('chapters', suggestions=[
+                MetadataSuggestion('%(chapters)s+MULTI_VIDEO:%(title)s'),
+            ], enabled=False, timed_data=True),
+            MetadataField('thumbnail', suggestions=[
+                MetadataSuggestion('%(thumbnails.-1.url)s'),
+                MetadataSuggestion('%(thumbnails.2.url)s'),
+            ], enabled=False),
+            MetadataField('timed_data', suggestions=[
+                MetadataSuggestion('%(0:lyrics)s+%(0:chapters)s'),
+            ], enabled=False, timed_data=True),
+        ]
 
-    DEFAULT_FILE_TAGS: ClassVar[list['FileTag']] = [
-        FileTag('title', '0:title'),
-        FileTag('artist', '0:artist'),
-        FileTag('album', '0:album'),
-        FileTag('thumbnail', '0:thumbnail'),
-    ]
+    @classproperty
+    def DEFAULT_FILE_TAGS(self) -> list['FileTag']:
+        return [
+            FileTag('title', '0:title'),
+            FileTag('artist', '0:artist'),
+            FileTag('album', '0:album'),
+            FileTag('thumbnail', '0:thumbnail'),
+        ]
 
     DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
     DEFAULT_URL_NAME_FORMAT: ClassVar[str] = '%(title)s'
@@ -351,14 +360,14 @@ class Collection(XmlObject):
     sync_bookmark_path: list[PathComponent] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
 
-    sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(
-        default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS.copy())
+    sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS)
 
-    metadata_suggestions: list[
-        'MetadataField'] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
-    file_tags: list[FileTag] = field(default_factory=lambda: deepcopy(Collection.DEFAULT_FILE_TAGS))
+    metadata_suggestions: list['MetadataField'] = field(default_factory=lambda: Collection.DEFAULT_METADATA_SUGGESTIONS)
+    file_tags: list['FileTag'] = field(default_factory=lambda: Collection.DEFAULT_FILE_TAGS)
 
     urls: list['CollectionUrl'] = field(default_factory=list)
+
+    downloader: 'MusicSyncDownloader | None' = None
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -431,6 +440,12 @@ class Collection(XmlObject):
             el.append(url.to_xml())
         return el
 
+    def update_sync_status(self, progress_callback: Callable | None = None):
+        if self.downloader is None:
+            self.downloader = download.downloader.MusicSyncDownloader(self)
+
+        self.downloader.update_sync_status(progress_callback)
+
 
 class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
     # set 1:1 album cover to be embedded (only for yt-music)
@@ -482,7 +497,6 @@ class Track(XmlObject):
     path: str
     playlist_index: str = ''
     permanently_downloaded: bool = False
-
 
     def __post_init__(self):
         if isinstance(self.permanently_downloaded, str):

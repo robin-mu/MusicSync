@@ -4,7 +4,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex
 
 
 class DataFrameTableModel(QAbstractTableModel):
-    def __init__(self, df=pd.DataFrame, parent=None):
+    def __init__(self, df: pd.DataFrame, parent=None):
         super().__init__(parent)
 
         self.parent = parent

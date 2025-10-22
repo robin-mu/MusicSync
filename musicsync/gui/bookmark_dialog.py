@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFileDialog, QTreeWidgetItem
 
-from src.bookmark_library import Bookmark, BookmarkFolder, BookmarkLibrary
-from src.gui.bookmark_gui import Ui_Dialog
+from ..bookmark_library import Bookmark, BookmarkFolder, BookmarkLibrary
+from .bookmark_gui import Ui_Dialog
 
 
 class BookmarkDialog(QDialog, Ui_Dialog):

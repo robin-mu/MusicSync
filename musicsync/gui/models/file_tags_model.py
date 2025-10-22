@@ -4,7 +4,7 @@ from typing import Any
 from PySide6 import QtCore
 from PySide6.QtCore import QModelIndex
 
-from src.music_sync_library import FileTag
+from music_sync_library import FileTag
 
 
 class FileTagsTableColumn(IntEnum):

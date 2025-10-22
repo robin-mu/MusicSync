@@ -5,7 +5,7 @@ from xml.etree import ElementTree
 from PySide6 import QtCore
 from PySide6.QtCore import QAbstractTableModel, QModelIndex
 
-from src.music_sync_library import MetadataSuggestion
+from music_sync_library import MetadataSuggestion
 
 
 class MetadataSuggestionsTableColumn(IntEnum):

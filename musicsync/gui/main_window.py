@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 from PySide6 import QtCore
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,14 +16,14 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from src.download.downloader import MusicSyncDownloader
-from src.gui.bookmark_dialog import BookmarkDialog
-from src.gui.main_gui import Ui_MainWindow
-from src.gui.metadata_suggestions_dialog import MetadataSuggestionsDialog
-from src.gui.models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
-from src.gui.models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
-from src.gui.models.sync_action_combobox_model import SyncActionComboboxModel
-from src.music_sync_library import CollectionUrl, ExternalMetadataTable, TrackSyncAction, TrackSyncStatus
+from .bookmark_dialog import BookmarkDialog
+from .main_gui import Ui_MainWindow
+from .metadata_suggestions_dialog import MetadataSuggestionsDialog
+from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
+from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
+from .models.sync_action_combobox_model import SyncActionComboboxModel
+from .threads import ThreadingWorker
+from ..music_sync_library import ExternalMetadataTable, TrackSyncAction, TrackSyncStatus, CollectionUrl
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -69,6 +69,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             box.view().viewport().installEventFilter(self)
 
         self.settings_filename_format_label.mousePressEvent = self.open_doc_url
+
+        self.thread_pool = QThreadPool()
 
 
     @staticmethod
@@ -177,6 +179,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_metadata_suggestions_label()
             self.update_tags_label()
+            self.update_sync_status_table()
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
@@ -299,17 +302,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
 
-    def compare_collection(self):
-        downloader = MusicSyncDownloader()
+    def compare_finished(self, result):
+        _, extra = result
+        selected_collection = extra['selected_collection']
+        selected_collection_xml = extra['selected_collection_xml']
 
-        selected_collection = self.get_selected_collection()
-
-        selected_collection_xml = selected_collection.to_xml_object()
-
-        sync_status = downloader.update_sync_status(selected_collection_xml)
-
-
-        old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for i in range(selected_collection.rowCount())}
+        old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for
+                                                  i in range(selected_collection.rowCount())}
         new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
 
         rows_to_be_removed = []
@@ -326,10 +325,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if new_url not in old_urls:
                 selected_collection.appendRow(CollectionUrlItem.from_xml_object(item))
 
-        self.update_sync_status_table(sync_status)
+        self.update_sync_status_table()
+        self.compare_button.setEnabled(True)
 
-    def update_sync_status_table(self, sync_status):
-        self.sync_status_table.setModel(FileSyncModel(sync_status, parent=self))
+    def compare_collection(self):
+        self.compare_button.setEnabled(False)
+        selected_collection = self.get_selected_collection()
+        selected_collection_xml = selected_collection.to_xml_object()
+
+        worker = ThreadingWorker(selected_collection_xml.update_sync_status, extra={'selected_collection': selected_collection,
+                                                                                    'selected_collection_xml': selected_collection_xml})
+        # worker.result.connect(lambda _, s=selected_collection, x=selected_collection_xml: self.compare_finished(s, x))
+        worker.signals.result.connect(self.compare_finished)
+        self.thread_pool.start(worker)
+
+    def update_sync_status_table(self):
+        self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
         self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(update_callback=self.sync_actions_updated, parent=self))
         for row in range(self.sync_status_table.model().rowCount()):
             self.sync_status_table.openPersistentEditor(self.sync_status_table.model().index(row, FileSyncModelColumn.ACTION))

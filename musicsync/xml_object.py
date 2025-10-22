@@ -1,10 +1,13 @@
+from abc import abstractmethod, ABC
 from xml.etree.ElementTree import Element
 
 
-class XmlObject:
+class XmlObject(ABC):
     @staticmethod
+    @abstractmethod
     def from_xml(el: Element) -> 'XmlObject':
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def to_xml(self) -> Element:
-        raise NotImplementedError
+        pass

@@ -4,8 +4,8 @@ from xml.etree.ElementTree import Element
 
 from PySide6.QtGui import QIcon
 
-from src.gui.models.xml_model import XmlObjectModel, XmlObjectModelItem
-from src.music_sync_library import Collection, CollectionUrl, ExternalMetadataTable, Folder, MusicSyncLibrary, Track
+from .xml_model import XmlObjectModel, XmlObjectModelItem
+from music_sync_library import Collection, CollectionUrl, ExternalMetadataTable, Folder, MusicSyncLibrary, Track
 
 
 class FolderItem(XmlObjectModelItem):
@@ -50,8 +50,8 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
-        self.metadata_suggestions = kwargs.get('metadata_suggestions', deepcopy(Collection.DEFAULT_METADATA_SUGGESTIONS))
-        self.file_tags = kwargs.get('file_tags', deepcopy(Collection.DEFAULT_FILE_TAGS))
+        self.metadata_suggestions = kwargs.get('metadata_suggestions', Collection.DEFAULT_METADATA_SUGGESTIONS)
+        self.file_tags = kwargs.get('file_tags', Collection.DEFAULT_FILE_TAGS)
         self.url_name_format = kwargs.get('url_name_format', '')
 
     @staticmethod

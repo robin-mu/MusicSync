@@ -5,9 +5,11 @@ from PySide6 import QtCore
 from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QComboBox
 
-from src.gui.models.data_frame_model import DataFrameTableModel
-from src.gui.models.item_delegates import ComboBoxDelegate
-from src.music_sync_library import TrackSyncAction, TrackSyncStatus
+from .library_model import CollectionItem
+from .data_frame_model import DataFrameTableModel
+from .item_delegates import ComboBoxDelegate
+
+from music_sync_library import Collection, TrackSyncAction, TrackSyncStatus
 
 
 class FileSyncModelColumn(IntEnum):
@@ -41,13 +43,14 @@ class FileSyncModelColumn(IntEnum):
 
 
 class FileSyncModel(DataFrameTableModel):
-    def __init__(self, df: pd.DataFrame, parent):
+    def __init__(self, collection: CollectionItem, parent):
+        df = FileSyncModel.collection_to_df(collection.to_xml_object())
         df.sort_values(by='status',
                        inplace=True,
                        kind='mergesort',
                        key=lambda col: col.apply(lambda s: s.sort_key))
 
-        DataFrameTableModel.__init__(self, df, parent)
+        super().__init__(df, parent)
 
     def internal_columns(self) -> int:
         return len([FileSyncModelColumn.TRACK, FileSyncModelColumn.COLLECTION_URL])
@@ -63,6 +66,25 @@ class FileSyncModel(DataFrameTableModel):
             return value.gui_string
 
         return super().display_data(value)
+
+    @staticmethod
+    def collection_to_df(collection: Collection) -> pd.DataFrame:
+        df = pd.DataFrame(
+            columns=['collection', 'url_name', 'file_path', 'track_title', 'status', 'action', 'collection_url',
+                     'track'])
+        for url in collection.urls:
+            url_df = pd.DataFrame.from_records([{'collection': collection.name,
+                                                 'url_name': url.name,
+                                                 'file_path': track.path,
+                                                 'track_title': track.title,
+                                                 'status': track.status,
+                                                 'action': collection.sync_actions[track.status],
+                                                 'collection_url': url,
+                                                 'track': track} for track in url.tracks.values()])
+
+            df = pd.concat([df, url_df])
+
+        return df
 
 class ActionComboboxDelegate(ComboBoxDelegate):
     def __init__(self, update_callback=None, parent=None):

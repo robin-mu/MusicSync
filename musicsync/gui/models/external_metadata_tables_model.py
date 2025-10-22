@@ -4,8 +4,8 @@ from typing import Any
 from PySide6 import QtCore
 from PySide6.QtCore import QModelIndex
 
-from src.gui.models.metadata_fields_model import MetadataFieldsTableColumn
-from src.music_sync_library import ExternalMetadataTable
+from .metadata_fields_model import MetadataFieldsTableColumn
+from music_sync_library import ExternalMetadataTable
 
 
 class ExternalMetadataTablesColumn(IntEnum):

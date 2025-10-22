@@ -1,6 +1,6 @@
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 
-from src.music_sync_library import TrackSyncAction, TrackSyncStatus
+from music_sync_library import TrackSyncAction, TrackSyncStatus
 
 
 class SyncActionComboboxModel(QStandardItemModel):

@@ -5,7 +5,7 @@ from PyQt6.QtCore import QModelIndex
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QCheckBox
 
-from src.music_sync_library import MetadataField
+from music_sync_library import MetadataField
 
 
 class MetadataFieldsTableColumn(IntEnum):

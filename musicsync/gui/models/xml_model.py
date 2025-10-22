@@ -1,25 +1,35 @@
 import typing
+from abc import abstractmethod, ABC, ABCMeta
 from xml.etree import ElementTree
 
 from PySide6 import QtCore
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 
-from src.xml_object import XmlObject
+from xml_object import XmlObject
 
+QStandardItemMeta = type(QStandardItem)
+class _ABCQStandardItemMeta(QStandardItemMeta, ABCMeta):
+    pass
 
-class XmlObjectModelItem(QStandardItem):
+QStandardItemModelMeta = type(QStandardItemModel)
+class _ABCQStandardItemModelMeta(QStandardItemModelMeta, ABCMeta):
+    pass
+
+class XmlObjectModelItem(QStandardItem, ABC, metaclass=_ABCQStandardItemMeta):
     def __init__(self):
         super().__init__()
 
+    @abstractmethod
     def to_xml_object(self) -> 'XmlObject':
-        raise NotImplementedError
+        pass
 
     @staticmethod
-    def from_xml_object(object: 'XmlObject') -> 'XmlObjectModelItem':
-        raise NotImplementedError
+    @abstractmethod
+    def from_xml_object(xml_object: 'XmlObject') -> 'XmlObjectModelItem':
+        pass
 
 
-class XmlObjectModel(QStandardItemModel):
+class XmlObjectModel(QStandardItemModel, ABC, metaclass=_ABCQStandardItemModelMeta):
     """
     A QStandardItemModel whose items are ``XmlObjectModelItem``s.
     """
@@ -62,10 +72,12 @@ class XmlObjectModel(QStandardItemModel):
 
         return True
 
-    @classmethod
-    def item_from_xml(cls, el: ElementTree.Element) -> 'XmlObjectModelItem':
-        raise NotImplementedError
+    @staticmethod
+    @abstractmethod
+    def item_from_xml(el: ElementTree.Element) -> 'XmlObjectModelItem':
+        pass
 
-    @classmethod
-    def validate_drop(cls, parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
-        raise NotImplementedError
+    @staticmethod
+    @abstractmethod
+    def validate_drop(parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
+        pass
