@@ -13,19 +13,16 @@ from music_sync_library import Collection, TrackSyncAction, TrackSyncStatus
 
 
 class FileSyncModelColumn(IntEnum):
-    COLLECTION = 0
-    URL_NAME = 1
-    FILENAME = 2
-    TRACK_TITLE = 3
-    STATUS = 4
-    ACTION = 5
-    COLLECTION_URL = 6
-    TRACK = 7
+    URL_NAME = 0
+    FILENAME = 1
+    TRACK_TITLE = 2
+    STATUS = 3
+    ACTION = 4
+    COLLECTION_URL = 5
+    TRACK = 6
 
     def __str__(self):
-        if self == FileSyncModelColumn.COLLECTION:
-            return 'Collection'
-        elif self == FileSyncModelColumn.URL_NAME:
+        if self == FileSyncModelColumn.URL_NAME:
             return 'URL Name'
         elif self == FileSyncModelColumn.FILENAME:
             return 'Filename'
@@ -39,6 +36,23 @@ class FileSyncModelColumn(IntEnum):
             return 'Collection URL Object'
         elif self == FileSyncModelColumn.TRACK:
             return 'Track Object'
+        return None
+
+    def df_column_name(self):
+        if self == FileSyncModelColumn.URL_NAME:
+            return 'url_name'
+        elif self == FileSyncModelColumn.FILENAME:
+            return 'filename'
+        elif self == FileSyncModelColumn.TRACK_TITLE:
+            return 'track_title'
+        elif self == FileSyncModelColumn.STATUS:
+            return 'status'
+        elif self == FileSyncModelColumn.ACTION:
+            return 'action'
+        elif self == FileSyncModelColumn.COLLECTION_URL:
+            return 'collection_url'
+        elif self == FileSyncModelColumn.TRACK:
+            return 'track'
         return None
 
 
@@ -69,18 +83,17 @@ class FileSyncModel(DataFrameTableModel):
 
     @staticmethod
     def collection_to_df(collection: Collection) -> pd.DataFrame:
-        df = pd.DataFrame(
-            columns=['collection', 'url_name', 'filename', 'track_title', 'status', 'action', 'collection_url',
-                     'track'])
+        columns = [c.df_column_name() for c in FileSyncModelColumn.__members__.values()]
+
+        df = pd.DataFrame(columns=columns)
         for url in collection.urls:
-            url_df = pd.DataFrame.from_records([{'collection': collection.name,
-                                                 'url_name': url.name,
-                                                 'filename': track.filename,
-                                                 'track_title': track.title,
-                                                 'status': track.status,
-                                                 'action': collection.sync_actions[track.status],
-                                                 'collection_url': url,
-                                                 'track': track} for track in url.tracks.values()])
+            url_df = pd.DataFrame.from_records([dict(zip(columns, [url.name,
+                                                                   track.filename,
+                                                                   track.title,
+                                                                   track.status,
+                                                                   collection.sync_actions[track.status],
+                                                                   url,
+                                                                   track])) for track in url.tracks.values()])
 
             df = pd.concat([df, url_df])
 
