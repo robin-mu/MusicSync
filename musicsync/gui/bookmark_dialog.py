@@ -39,9 +39,14 @@ class BookmarkDialog(QDialog, Ui_Dialog):
         try:
             library = BookmarkLibrary.create_from_path(path)
             append_tree(None, library.children)
+            if self.bookmark_tree_widget.topLevelItemCount() == 1:
+                index = self.bookmark_tree_widget.indexFromItem(self.bookmark_tree_widget.topLevelItem(0))
+                self.bookmark_tree_widget.expand(index)
+
             self.expanded()
         except pd.errors.DatabaseError:
             QMessageBox.warning(self, 'Error', 'The bookmark database could not be opened because it is locked. Close your browser and try again.')
 
     def expanded(self, *args):
-        self.bookmark_tree_widget.resizeColumnsToContents()
+        for i in range(self.bookmark_tree_widget.columnCount()):
+            self.bookmark_tree_widget.resizeColumnToContents(i)
