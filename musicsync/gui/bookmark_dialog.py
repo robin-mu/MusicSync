@@ -1,4 +1,5 @@
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFileDialog, QTreeWidgetItem
+import pandas as pd
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFileDialog, QTreeWidgetItem, QMessageBox
 
 from ..bookmark_library import Bookmark, BookmarkFolder, BookmarkLibrary
 from .bookmark_gui import Ui_Dialog
@@ -34,10 +35,13 @@ class BookmarkDialog(QDialog, Ui_Dialog):
                     parent.addChild(new_child)
 
         path = self.bookmark_path_entry.text()
-        library = BookmarkLibrary.create_from_path(path)
-        append_tree(None, library.children)
-        self.expanded()
+
+        try:
+            library = BookmarkLibrary.create_from_path(path)
+            append_tree(None, library.children)
+            self.expanded()
+        except pd.errors.DatabaseError:
+            QMessageBox.warning(self, 'Error', 'The bookmark database could not be opened because it is locked. Close your browser and try again.')
 
     def expanded(self, *args):
-        for i in range(self.bookmark_tree_widget.columnCount()):
-            self.bookmark_tree_widget.resizeColumnToContents(i)
+        self.bookmark_tree_widget.resizeColumnsToContents()

@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+import pandas as pd
 from PySide6 import QtCore
 from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
@@ -306,29 +307,37 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
 
     def compare_finished(self, result: tuple):
-        _, extra = result
-        selected_collection = extra['selected_collection']
-        selected_collection_xml = extra['selected_collection_xml']
+        error, extra = result
 
-        old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for
-                                                  i in range(selected_collection.rowCount())}
-        new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
+        if error is None:
+            selected_collection = extra['selected_collection']
+            selected_collection_xml = extra['selected_collection_xml']
 
-        rows_to_be_removed = []
-        for i, (old_url, item) in enumerate(old_urls.items()):
-            if old_url in new_urls:
-                item.update(new_urls[old_url])
+            old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for
+                                                      i in range(selected_collection.rowCount())}
+            new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
+
+            rows_to_be_removed = []
+            for i, (old_url, item) in enumerate(old_urls.items()):
+                if old_url in new_urls:
+                    item.update(new_urls[old_url])
+                else:
+                    rows_to_be_removed.append(i)
+
+            for i in sorted(rows_to_be_removed, reverse=True):
+                selected_collection.removeRow(i)
+
+            for new_url, item in new_urls.items():
+                if new_url not in old_urls:
+                    selected_collection.appendRow(CollectionUrlItem.from_xml_object(item))
+
+            self.update_sync_status_table()
+        else:
+            if isinstance(error, pd.errors.DatabaseError):
+                QMessageBox.warning(self, 'Error', 'Bookmark sync could not be performed because the database is locked. Close your browser and try again.')
             else:
-                rows_to_be_removed.append(i)
+                QMessageBox.warning(self, 'Error', 'There were errors while comparing this collection')
 
-        for i in sorted(rows_to_be_removed, reverse=True):
-            selected_collection.removeRow(i)
-
-        for new_url, item in new_urls.items():
-            if new_url not in old_urls:
-                selected_collection.appendRow(CollectionUrlItem.from_xml_object(item))
-
-        self.update_sync_status_table()
         self.compare_button.setEnabled(True)
 
     def compare_collection(self):

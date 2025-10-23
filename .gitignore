@@ -3,3 +3,7 @@
 *.xml
 *.csv
 *.ui
+/logs/
+/.venv/
+/.mypy_cache/
+/.ruff_cache/

@@ -6,6 +6,7 @@ from pprint import pprint
 from typing import Any, ClassVar, Union, Callable
 from xml.etree.ElementTree import Element
 
+import pandas as pd
 import yt_dlp
 from yt_dlp import MetadataParserPP, YoutubeDL
 
@@ -440,11 +441,14 @@ class Collection(XmlObject):
             el.append(url.to_xml())
         return el
 
-    def update_sync_status(self, progress_callback: Callable | None = None):
+    def update_sync_status(self, progress_callback: Callable | None = None) -> None | Exception:
         if self.downloader is None:
             self.downloader = download.downloader.MusicSyncDownloader(self)
 
-        self.downloader.update_sync_status(progress_callback)
+        try:
+            self.downloader.update_sync_status(progress_callback)
+        except pd.errors.DatabaseError as e:
+            return e
 
 
 class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
