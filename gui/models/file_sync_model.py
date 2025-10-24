@@ -9,7 +9,7 @@ from .library_model import CollectionItem
 from .data_frame_model import DataFrameTableModel
 from .item_delegates import ComboBoxDelegate
 
-from music_sync_library import Collection, TrackSyncAction, TrackSyncStatus
+from musicsync.music_sync_library import Collection, TrackSyncAction, TrackSyncStatus
 
 
 class FileSyncModelColumn(IntEnum):

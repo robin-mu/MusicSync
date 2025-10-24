@@ -5,7 +5,7 @@ from xml.etree.ElementTree import Element
 from PySide6.QtGui import QIcon
 
 from .xml_model import XmlObjectModel, XmlObjectModelItem
-from music_sync_library import Collection, CollectionUrl, ExternalMetadataTable, Folder, MusicSyncLibrary, Track
+from musicsync.music_sync_library import Collection, CollectionUrl, ExternalMetadataTable, Folder, MusicSyncLibrary, Track
 
 
 class FolderItem(XmlObjectModelItem):
@@ -169,7 +169,7 @@ class LibraryModel(XmlObjectModel):
                                 external_metadata_tables=self.external_metadata_tables,
                                 children=children)
 
-    def to_xml(self, filename=None):
+    def to_xml(self, filename: str | None=None):
         if filename is None:
             filename = self.path
         lib_object = self.to_xml_object()

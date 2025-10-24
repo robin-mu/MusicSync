@@ -10,9 +10,9 @@ import pandas as pd
 import yt_dlp
 from yt_dlp import MetadataParserPP, YoutubeDL
 
-import download.downloader
-from xml_object import XmlObject
-from utils import classproperty
+import musicsync.download.downloader as dl
+from .xml_object import XmlObject
+from .utils import classproperty
 
 
 @dataclass
@@ -411,6 +411,7 @@ class Collection(XmlObject):
         attrs.pop('sync_actions')
         attrs.pop('file_tags')
         attrs.pop('metadata_suggestions')
+        attrs.pop('downloader')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
         attrs['exclude_after_download'] = str(self.exclude_after_download)
 
@@ -443,7 +444,7 @@ class Collection(XmlObject):
 
     def update_sync_status(self, progress_callback: Callable | None = None) -> None | Exception:
         if self.downloader is None:
-            self.downloader = download.downloader.MusicSyncDownloader(self)
+            self.downloader = dl.MusicSyncDownloader(self)
 
         try:
             self.downloader.update_sync_status(progress_callback)

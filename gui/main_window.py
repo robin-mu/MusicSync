@@ -24,7 +24,8 @@ from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileS
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from .models.sync_action_combobox_model import SyncActionComboboxModel
 from .threads import ThreadingWorker
-from ..music_sync_library import ExternalMetadataTable, TrackSyncAction, TrackSyncStatus, CollectionUrl
+from musicsync.music_sync_library import ExternalMetadataTable, TrackSyncAction, TrackSyncStatus, CollectionUrl, \
+    Collection
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -41,7 +42,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
         # Library Tree View
-        self.treeView.setModel(LibraryModel('/home/robin/Desktop/MusicSync/a.xml'))
+        self.treeView.setModel(LibraryModel())
         self.treeView.expandAll()
 
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
@@ -130,6 +131,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if filename:
             if not filename.endswith('.xml'):
                 filename += '.xml'
+
 
             self.treeView.model().to_xml(filename)
             self.treeView.model().path = filename
@@ -229,7 +231,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return current_collection
 
 
-    def update_current_sync_folder(self, file: str, path: list[tuple[str, str]] | None=None, set_url_name=False):
+    def update_current_sync_folder(self, file: str, path: list[Collection.PathComponent] | None=None, set_url_name=False):
         if path is None:
             path = []
 
@@ -269,7 +271,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             idx = bookmark_window.bookmark_tree_widget.selectedIndexes()[0]
             folder = []
             while (item := bookmark_window.bookmark_tree_widget.itemFromIndex(idx)) is not None:
-                folder.append((item.text(3), item.text(0)))
+                folder.append(Collection.PathComponent(id=item.text(3), name=item.text(0)))
                 idx = idx.parent()
 
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())

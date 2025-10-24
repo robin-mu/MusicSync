@@ -8,7 +8,7 @@ from .models.external_metadata_tables_model import ExternalMetadataTablesColumn,
 from .models.file_tags_model import FileTagsModel, FileTagsTableColumn
 from .models.metadata_fields_model import CheckboxDelegate, MetadataFieldsModel, MetadataFieldsTableColumn
 from .models.metadata_suggestions_model import MetadataSuggestionsModel, MetadataSuggestionsTableColumn
-from ..music_sync_library import ExternalMetadataTable, FileTag, MetadataField, MetadataSuggestion
+from musicsync.music_sync_library import ExternalMetadataTable, FileTag, MetadataField, MetadataSuggestion
 
 
 class MetadataSuggestionsDialog(QtWidgets.QDialog, Ui_Dialog):

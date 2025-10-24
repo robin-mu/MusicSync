@@ -6,9 +6,9 @@ from typing import Callable, Any
 import pandas as pd
 import yt_dlp
 
-from bookmark_library import BookmarkLibrary
-from utils import log_msg, classproperty
-import music_sync_library as lib
+from ..bookmark_library import BookmarkLibrary
+from ..utils import log_msg, classproperty
+import musicsync.music_sync_library as lib
 
 RemoteInfo = namedtuple('RemoteInfo', ['url', 'title', 'playlist_index'])
 logger = logging.getLogger('MusicSync')
@@ -37,10 +37,10 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                      'key': 'FFmpegMetadata'},
                     {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
                 'compat_opts': ['no-youtube-unavailable-videos'],
-                'quiet': True
+                'quiet': False
                 }
 
-    def __init__(self, collection: 'lib.Collection'):
+    def __init__(self, collection: 'Collection'):
         params = self.DEFAULT_OPTIONS
         super(MusicSyncDownloader, self).__init__(params=params)
 

@@ -1,7 +1,7 @@
 import pandas as pd
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFileDialog, QTreeWidgetItem, QMessageBox
 
-from ..bookmark_library import Bookmark, BookmarkFolder, BookmarkLibrary
+from musicsync.bookmark_library import Bookmark, BookmarkFolder, BookmarkLibrary
 from .bookmark_gui import Ui_Dialog
 
 

@@ -5,7 +5,7 @@ from PySide6 import QtCore
 from PySide6.QtCore import QModelIndex
 
 from .metadata_fields_model import MetadataFieldsTableColumn
-from music_sync_library import ExternalMetadataTable
+from musicsync.music_sync_library import ExternalMetadataTable
 
 
 class ExternalMetadataTablesColumn(IntEnum):

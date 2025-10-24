@@ -1,11 +1,11 @@
 from enum import IntEnum
 from typing import Any
 
-from PyQt6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtWidgets import QCheckBox
 
-from music_sync_library import MetadataField
+from musicsync.music_sync_library import MetadataField
 
 
 class MetadataFieldsTableColumn(IntEnum):

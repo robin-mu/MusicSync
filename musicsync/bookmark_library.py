@@ -61,8 +61,9 @@ class FirefoxLibrary(BookmarkLibrary):
 
         folders: dict[int, BookmarkFolder] = {}
         library = FirefoxLibrary()
-        for row in bookmarks.itertuples():
+        for row in bookmarks.sort_values('parent').itertuples():
             parent = folders[row.parent] if row.parent != 0 else library
+
             if row.type == 1:
                 new_entry = Bookmark(id=str(row.Index), parent=parent, url=row.url, bookmark_title=row.bookmark_title, page_title=row.page_title)
             elif row.type == 2:

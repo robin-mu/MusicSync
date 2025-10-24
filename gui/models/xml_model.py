@@ -5,7 +5,7 @@ from xml.etree import ElementTree
 from PySide6 import QtCore
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 
-from xml_object import XmlObject
+from musicsync.xml_object import XmlObject
 
 QStandardItemMeta = type(QStandardItem)
 class _ABCQStandardItemMeta(QStandardItemMeta, ABCMeta):
