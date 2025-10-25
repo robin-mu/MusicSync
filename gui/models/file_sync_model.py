@@ -110,7 +110,7 @@ class ActionComboboxDelegate(ComboBoxDelegate):
         status_index = index.model().index(index.row(), FileSyncModelColumn.STATUS)
         status = index.model().data(status_index, role=QtCore.Qt.ItemDataRole.BackgroundRole)
 
-        return [a.gui_string for a in TrackSyncStatus.action_options()[status]]
+        return [a.gui_string for a in TrackSyncStatus.ACTION_OPTIONS[status]]
 
     def get_combobox_selection(self, index) -> str:
         return index.model().data(index, role=QtCore.Qt.ItemDataRole.BackgroundRole).gui_string

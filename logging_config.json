@@ -3,8 +3,11 @@
   "disable_existing_loggers": false,
   "formatters": {
     "ms_formatter": {
-      "format": "[%(asctime)s] [%(levelname)s] %(message)s",
-      "datefmt": "%Y-%m-%d %H:%M:%S"
+      "format": "[%(asctime)s] [%(levelname)s] [%(prefix)s] %(message)s",
+      "datefmt": "%Y-%m-%d %H:%M:%S",
+      "defaults": {
+        "prefix": ""
+      }
     }
   },
   "handlers": {
@@ -14,7 +17,8 @@
       "formatter": "ms_formatter",
       "filename": "logs/music_sync.log",
       "maxBytes": 5000000,
-      "backupCount": 5
+      "backupCount": 5,
+      "encoding": "utf8"
     },
     "console": {
       "class": "logging.StreamHandler",
