@@ -1,3 +1,4 @@
+import os.path
 from copy import deepcopy
 
 import pandas as pd
@@ -230,7 +231,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_collection = current_collection.parent()
         return current_collection
 
-
     def update_current_sync_folder(self, file: str, path: list[Collection.PathComponent] | None=None, set_url_name=False):
         if path is None:
             path = []
@@ -312,8 +312,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         error, extra = result
 
         if error is None:
-            selected_collection = extra['selected_collection']
-            selected_collection_xml = extra['selected_collection_xml']
+            selected_collection: CollectionItem = extra['selected_collection']
+            selected_collection_xml: Collection = extra['selected_collection_xml']
 
             old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for
                                                       i in range(selected_collection.rowCount())}
@@ -325,6 +325,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     item.update(new_urls[old_url])
                 else:
                     rows_to_be_removed.append(i)
+
+                    folder = Collection.get_real_path(selected_collection, item)
+                    delete = QMessageBox.question(self,
+                                                  'Delete files',
+                                                  f'The URL {item.text()} has been deleted from the bookmark folder. Do you want to delete the corresponding files located at {folder}?',
+                                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    if delete == QMessageBox.StandardButton.Yes:
+                        for track in item.tracks.values():
+                            path = Collection.get_real_path(selected_collection, item, track)
+                            if os.path.isfile(path):
+                                os.remove(path)
 
             for i in sorted(rows_to_be_removed, reverse=True):
                 selected_collection.removeRow(i)
@@ -426,9 +437,13 @@ class TreeContextMenu(QMenu):
                 import_urls_from_bookmarks_action.setEnabled(False)
             self.addAction(import_urls_from_bookmarks_action)
         elif isinstance(self.item, CollectionUrlItem):
-            exclude_action = QAction('Include URL' if self.item.excluded else 'Exclude URL from downloading')
+            exclude_action = QAction('Exclude URL from downloading', checkable=True, checked=self.item.excluded)
             exclude_action.triggered.connect(self.toggle_excluded)
             self.addAction(exclude_action)
+
+            concat_action = QAction('Concatenate videos of playlist', checkable=True, checked=self.item.concat)
+            concat_action.triggered.connect(self.toggle_concat)
+            self.addAction(concat_action)
 
         if self.index.model() is not None:
             delete_action = QAction('Delete')
@@ -462,21 +477,21 @@ class TreeContextMenu(QMenu):
     def add_url(self):
         url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
         if url:
-            self.model.add_url(self.item, url)
+            self.model.add_url(parent=self.item, url=url)
 
     def import_from_bookmarks(self):
         bookmark_window = BookmarkDialog(self.parent)
         if bookmark_window.exec():
             urls = []
 
-            def add_urls(item: QTreeWidgetItem, recursion_depth=None):
-                if item.childCount() > 0 and (recursion_depth is None or recursion_depth > 0):
-                    for i in range(item.childCount()):
-                        add_urls(item.child(i), None if recursion_depth is None else recursion_depth - 1)
-                elif item.text(2):
-                    data = {'url': item.text(2)}
+            def add_urls(tree_widget_item: QTreeWidgetItem, recursion_depth=None):
+                if tree_widget_item.childCount() > 0 and (recursion_depth is None or recursion_depth > 0):
+                    for i in range(tree_widget_item.childCount()):
+                        add_urls(tree_widget_item.child(i), None if recursion_depth is None else recursion_depth - 1)
+                elif tree_widget_item.text(2):
+                    data = {'url': tree_widget_item.text(2)}
                     if bookmark_window.bookmark_title_check_box.isChecked():
-                        data['name'] = item.text(0)
+                        data['name'] = tree_widget_item.text(0)
 
                     urls.append(data)
 
@@ -491,3 +506,6 @@ class TreeContextMenu(QMenu):
         font = self.item.font()
         font.setStrikeOut(not font.strikeOut())
         self.item.setFont(font)
+
+    def toggle_concat(self):
+        self.item.concat = not self.item.concat

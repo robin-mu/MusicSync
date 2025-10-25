@@ -1,3 +1,4 @@
+import os
 import xml.etree.ElementTree as et
 from collections import namedtuple
 from dataclasses import dataclass, field
@@ -451,9 +452,18 @@ class Collection(XmlObject):
             self.downloader = dl.MusicSyncDownloader(self)
 
         try:
-            self.downloader.update_sync_status(progress_callback)
+            self.downloader.update_sync_status(progress_callback=progress_callback)
         except pd.errors.DatabaseError as e:
             return e
+
+    @staticmethod
+    def get_real_path(collection: 'Collection | CollectionItem', url: 'CollectionUrl | CollectionUrlItem', track: 'Track | None'=None):
+        folder = collection.folder_path
+        if collection.save_playlists_to_subfolders and url.is_playlist:
+            folder = os.path.join(folder, url.name)
+        if track is None:
+            return folder
+        return os.path.join(folder, track.filename)
 
 
 class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
@@ -472,11 +482,20 @@ class CollectionUrl(XmlObject):
     url: str
     name: str = ''
     excluded: bool = False
+    concat: bool = False
+    is_playlist: bool | None = None
     tracks: dict[str, 'Track'] = field(default_factory=dict)
 
     def __post_init__(self):
         if isinstance(self.excluded, str):
             self.excluded = self.excluded == 'True'
+        if isinstance(self.concat, str):
+            self.concat = self.concat == 'True'
+        if isinstance(self.is_playlist, str):
+            if self.is_playlist == 'None':
+                self.is_playlist = None
+            else:
+                self.is_playlist = self.is_playlist == 'True'
 
     @staticmethod
     def from_xml(el: Element) -> 'CollectionUrl':
@@ -491,6 +510,8 @@ class CollectionUrl(XmlObject):
         attrs = vars(self).copy()
         attrs.pop('tracks')
         attrs['excluded'] = str(self.excluded)
+        attrs['concat'] = str(self.concat)
+        attrs['is_playlist'] = str(self.is_playlist)
 
         el = et.Element('CollectionUrl', **attrs)
         for track in self.tracks.values():

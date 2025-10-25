@@ -75,8 +75,10 @@ class CollectionUrlItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
         self.url: str = kwargs['url']
-        self.tracks: list[Track] = kwargs.get('tracks', [])
-        self.excluded = kwargs.get('excluded', False)
+        self.tracks: dict[str, Track] = kwargs.get('tracks', {})
+        self.excluded: bool = kwargs.get('excluded', False)
+        self.concat: bool = kwargs.get('concat', False)
+        self.is_playlist: bool | None = kwargs.get('is_playlist', None)
 
         name = kwargs.get('name')
         if not name:
@@ -198,9 +200,9 @@ class LibraryModel(XmlObjectModel):
         return new_collection
 
     @staticmethod
-    def add_url(parent: CollectionItem, url: str, name: str= '', tracks=None):
+    def add_url(parent: CollectionItem, url: str, name: str= '', tracks: dict[str, Track] | None=None):
         if tracks is None:
-            tracks = []
+            tracks = {}
 
         new_url = CollectionUrlItem(url=url, name=name, tracks=tracks)
         parent.appendRow(new_url)
