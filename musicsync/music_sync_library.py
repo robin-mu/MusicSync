@@ -78,7 +78,7 @@ class Folder(XmlObject):
 
 
 class TrackSyncStatus(StrEnum):
-    ADDED_TO_SOURCE = auto(), 'Track added to collection', 'Track is present online, but was not present in the previous sync.'
+    ADDED_TO_SOURCE = auto(), 'Track added to URL', 'Track is present online, but was not present in the previous sync.'
     """
     Track is present online, but was not present in the previous sync.
     """
@@ -86,25 +86,25 @@ class TrackSyncStatus(StrEnum):
     """
     Track is present online, was also present in previous sync, but the corresponding file does not exist.
     """
-    REMOVED_FROM_SOURCE = auto(), 'Track removed from collection', 'Track is not present online, but was present in the previous sync.'
+    REMOVED_FROM_SOURCE = auto(), 'Track removed from URL', 'Track is not present online, but was present in the previous sync.'
     """
     Track is not present online, but was present in the previous sync.
     """
-    LOCAL_FILE = auto(), 'File only exists locally', 'The file is not in the permanently downloaded files and does not correspond to a track found online.'
+    LOCAL_FILE = auto(), 'File only exists locally', 'The file is not marked as permanently downloaded and does not correspond to a track found online.'
     """
-    The file is not in the permanently downloaded files and does not correspond to a track found online.
+    The file is not marked as permanently downloaded and does not correspond to a track found online.
     """
-    PERMANENTLY_DOWNLOADED = auto(), 'File permanently downloaded', 'The file is marked as permanently downloaded'
+    PERMANENTLY_DOWNLOADED = auto(), 'File permanently downloaded', 'The file is marked as permanently downloaded (even though its corresponding track might not exist anymore).'
     """
-    The file is marked as permanently downloaded
+    The file is marked as permanently downloaded (even though its corresponding track might not exist anymore).
     """
-    DOWNLOADED = auto(), 'File downloaded', 'Track is present online and the corresponding file exists'
+    DOWNLOADED = auto(), 'File downloaded', 'Track is present online and the corresponding file exists.'
     """
-    Track is present online and the corresponding file exists
+    Track is present online and the corresponding file exists.
     """
 
-    @staticmethod
-    def action_options():
+    @classproperty
+    def ACTION_OPTIONS(self):
         return {
             TrackSyncStatus.ADDED_TO_SOURCE: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
                                               TrackSyncAction.DECIDE_INDIVIDUALLY],
@@ -119,7 +119,7 @@ class TrackSyncStatus(StrEnum):
                                                      TrackSyncAction.REMOVE_FROM_PERMANENTLY_DOWNLOADED,
                                                      TrackSyncAction.DECIDE_INDIVIDUALLY],
             TrackSyncStatus.DOWNLOADED: [TrackSyncAction.DO_NOTHING, TrackSyncAction.DOWNLOAD,
-                                         TrackSyncAction.DECIDE_INDIVIDUALLY],
+                                         TrackSyncAction.REDOWNLOAD_METADATA, TrackSyncAction.DECIDE_INDIVIDUALLY],
         }
 
     def __new__(cls, value, gui_string, gui_status_tip):
@@ -148,7 +148,7 @@ class TrackSyncAction(StrEnum):
     """
     Download the file.
     """
-    DELETE = auto(), 'Delete', 'Delete the file and remove the track entry from the collection.'
+    DELETE = auto(), 'Delete', 'Delete the file and remove the track entry from the URL.'
     """
     Delete the file.
     """
@@ -163,6 +163,10 @@ class TrackSyncAction(StrEnum):
     REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Mark as not permanently downloaded', 'Mark the file as not permanently downloaded (but don\'t delete the file).'
     """
     Mark the file as not permanently downloaded (but don't delete the file).
+    """
+    REDOWNLOAD_METADATA = auto(), 'Redownload metadata', 'Download metadata again, but don\'t download the actual file again.'
+    """
+    Download metadata again, but don't download the actual file again.
     """
     DECIDE_INDIVIDUALLY = auto(), 'Decide individually', 'You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".'
     """
