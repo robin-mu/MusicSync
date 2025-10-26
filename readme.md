@@ -15,8 +15,18 @@ Sync your online music/video libraries with your local files.
 ```shell
 git clone https://github.com/robin-mu/MusicSync.git
 cd MusicSync
-pip install -r requirements.txt
+pip install yt-dlp pandas
 ```
+
+## Required dependencies
+- yt-dlp
+- pandas
+
+## Optional dependencies
+- ffmpeg binaries (CLI program, not the python package)
+- pyside6
+- mutagen
+- syncedlyrics
 
 # Usage
 
