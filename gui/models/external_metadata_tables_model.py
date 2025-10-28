@@ -30,11 +30,11 @@ class ExternalMetadataTablesColumn(IntEnum):
 
 
 class ExternalMetadataTablesModel(QtCore.QAbstractTableModel):
-    def __init__(self, tables: list[ExternalMetadataTable], parent: 'MetadataSuggestionsDialog'=None):
+    def __init__(self, tables: list[ExternalMetadataTable]=None, parent=None):
         super(ExternalMetadataTablesModel, self).__init__(parent)
 
         self.parent = parent
-        self.tables = tables
+        self.tables = tables or []
 
     def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()):
         return len(self.tables)

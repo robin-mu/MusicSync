@@ -31,7 +31,7 @@ class XmlObjectModelItem(QStandardItem, ABC, metaclass=_ABCQStandardItemMeta):
 
 class XmlObjectModel(QStandardItemModel, ABC, metaclass=_ABCQStandardItemModelMeta):
     """
-    A QStandardItemModel whose items are ``XmlObjectModelItem``s.
+    A QStandardItemModel whose items are `XmlObjectModelItem`s.
     """
 
     def __init__(self):

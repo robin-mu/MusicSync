@@ -49,11 +49,11 @@ class MetadataFieldsTableColumn(IntEnum):
 
 
 class MetadataFieldsModel(QtCore.QAbstractTableModel):
-    def __init__(self, fields: list[MetadataField], parent: 'MetadataSuggestionsDialog'=None):
+    def __init__(self, fields: list[MetadataField]=None, parent=None):
         super(MetadataFieldsModel, self).__init__(parent)
 
         self.parent = parent
-        self.fields = fields
+        self.fields = fields or []
         self.sort_order = QtCore.Qt.SortOrder.AscendingOrder
 
     def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()):

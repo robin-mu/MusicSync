@@ -25,11 +25,11 @@ class FileTagsTableColumn(IntEnum):
 
 
 class FileTagsModel(QtCore.QAbstractTableModel):
-    def __init__(self, tags: list[FileTag], parent: 'MetadataSuggestionsDialog'=None):
+    def __init__(self, tags: list[FileTag]=None, parent=None):
         super(FileTagsModel, self).__init__(parent)
 
         self.parent = parent
-        self.tags = tags
+        self.tags = tags or []
 
     def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()):
         return len(self.tags)

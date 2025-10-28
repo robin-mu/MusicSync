@@ -80,7 +80,7 @@ Not every sync status can result in every sync action.
 
 ---
 
-Clicking the "Sync" button will execute all selected sync actions, i.e. downloading files, deleting files etc. New tracks will have metadata suggestions generated which can then be selected and applied in the "Metadata" tab.
+Clicking the "Sync" button will execute all selected sync actions, i.e. downloading files, deleting files etc. Metadata suggestions can then be selected and applied in the ["Metadata"](#metadata) tab.
 
 ### Metadata
 
@@ -89,7 +89,7 @@ Clicking the "Sync" button will execute all selected sync actions, i.e. download
 ### Formatting
 Many settings in the following three settings tabs use format strings following [yt-dlp\'s output template](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template) syntax to set metadata or file data. Referencing yt-dlp's downloaded metadata works exactly like described there. There are also additional features:
 - Custom metadata fields from the connected metadata table can be referenced with `0:[field]` and fields from external tables with `[id]:[field]` (so the connected metadata table always has id 0).
-- Data from plugins can be requested with `[plugin_name]:[arg1];[arg2];...;[kwarg1_key]=[kwarg1_value];...`. See the ["Plugins"](#plugins) section for available built-in plugins and how to add your own.
+- Data from [metadata plugins](#metadata-plugins) can be requested with `[plugin_name]:[arg1];[arg2];...;[kwarg1_key]=[kwarg1_value];...`. See the ["Plugins"](#plugins) section for available built-in plugins and how to add your own.
 
 ### Collection settings
 The following settings are available:
@@ -140,7 +140,7 @@ In the lower table, you can configure which suggestions will be generated for th
 - **Index/Slice**: Index or python slice (like `[start]:[stop]:[step]`) to process the resulting list of suggestions.
 
 ### File tags and operations
-In this table, you can select the tags that should be added to downloaded files and their respective values. You can also execute various file operations via [plugins](#plugins).
+In this table, you can select the tags that should be added to downloaded files and their respective values. You can also execute various file operations via [file plugins](#file-plugins).
 
 - **Name**: The name of the tag. Note that not every file format supports every tag name, so try to only select tag names from the drop-down list at the top, but your file format might not even support every one of these. If an unknown tag name is given, the data will be saved as a comment (if the file format supports comments), so your music player might not be able to recognize that tag. See the [table below](#supported-file-tags-depending-on-file-format) for an overview on supported file tags for various file formats.
 - **Format**: [Format string](#formatting) to generate the tag from.

@@ -2,9 +2,9 @@ import os.path
 from copy import deepcopy
 
 import pandas as pd
-from PySide6 import QtCore
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
+from PySide6 import QtCore, QtWidgets
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, QModelIndex
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QCursor
 from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
@@ -15,18 +15,21 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QTreeView,
     QTreeWidget,
-    QTreeWidgetItem,
+    QTreeWidgetItem, QStyle,
 )
 
+from musicsync.music_sync_library import ExternalMetadataTable, TrackSyncAction, TrackSyncStatus, CollectionUrl, \
+    Collection, MetadataField, MetadataSuggestion, FileTag
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
-from .metadata_suggestions_dialog import MetadataSuggestionsDialog
+from .models.external_metadata_tables_model import ExternalMetadataTablesModel, ExternalMetadataTablesColumn
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
+from .models.file_tags_model import FileTagsModel, FileTagsTableColumn
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
+from .models.metadata_fields_model import MetadataFieldsModel, MetadataFieldsTableColumn, CheckboxDelegate
+from .models.metadata_suggestions_model import MetadataSuggestionsModel, MetadataSuggestionsTableColumn
 from .models.sync_action_combobox_model import SyncActionComboboxModel
 from .threads import ThreadingWorker
-from musicsync.music_sync_library import ExternalMetadataTable, TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -41,7 +44,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionSave_library_as.triggered.connect(self.save_library_as)
         self.actionChange_Track_Metdata_Table.triggered.connect(self.change_metadata_table)
 
-
         # Library Tree View
         self.treeView.setModel(LibraryModel())
         self.treeView.expandAll()
@@ -50,48 +52,124 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.treeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.treeView.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.treeView, point))
 
+        self.tabWidget.currentChanged.connect(self.tab_changed)
 
-        # File sync status page
+        # File sync tab
         self.compare_button.pressed.connect(self.compare_collection)
 
-
-        # Collection settings page
+        # Collection settings tab
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
-        self.settings_save.pressed.connect(self.save_settings)
         self.settings_sync_button.pressed.connect(self.change_sync_folder)
         self.settings_stop_sync_button.pressed.connect(lambda: self.update_current_sync_folder(''))
-        self.settings_edit_metadata_button.pressed.connect(self.edit_metadata_suggestions)
 
         self.metadata_table_label.mousePressEvent = self.change_metadata_table
 
-        self.action_combo_boxes = dict(zip([self.added_combo_box, self.not_downloaded_combo_box, self.removed_combo_box, self.local_combo_box, self.permanent_combo_box, self.downloaded_combo_box],
-                                   [TrackSyncStatus.ADDED_TO_SOURCE, TrackSyncStatus.NOT_DOWNLOADED, TrackSyncStatus.REMOVED_FROM_SOURCE, TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
+        self.action_combo_boxes = dict(
+            zip([self.added_combo_box, self.not_downloaded_combo_box, self.removed_combo_box, self.local_combo_box,
+                 self.permanent_combo_box, self.downloaded_combo_box],
+                [TrackSyncStatus.ADDED_TO_SOURCE, TrackSyncStatus.NOT_DOWNLOADED, TrackSyncStatus.REMOVED_FROM_SOURCE,
+                 TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
         for box, status in self.action_combo_boxes.items():
             box.setModel(SyncActionComboboxModel(status))
-            box.highlighted[int].connect(lambda index, box=box: self.statusbar.showMessage(box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
+            box.highlighted[int].connect(lambda index, box=box: self.statusbar.showMessage(
+                box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
             box.view().viewport().installEventFilter(self)
 
         self.settings_filename_format_label.mousePressEvent = self.open_doc_url
 
-        self.thread_pool = QThreadPool()
+        # Metadata suggestions tab
+        # Metadata fields table
+        self.fields_table.setModel(MetadataFieldsModel())
 
+        self.field_add_button.pressed.connect(self.add_field)
+        self.field_remove_button.pressed.connect(self.remove_field)
+
+        # metadata suggestions table
+        self.suggestions_table.setStyle(MetadataSuggestionsTableStyle())
+        self.suggestions_table.horizontalHeader().setMouseTracking(True)
+        self.suggestions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
+        self.suggestions_table.horizontalHeader().installEventFilter(self)
+        self.installEventFilter(self)
+
+        self.suggestions_add_button.pressed.connect(self.add_suggestion)
+        self.suggestions_remove_button.pressed.connect(self.remove_suggestion)
+
+        # external metadata tables table
+        self.external_tables_table.setModel(ExternalMetadataTablesModel())
+
+        self.external_table_add_button.pressed.connect(self.add_external_table)
+        self.external_table_remove_button.pressed.connect(self.remove_external_table)
+
+        # file tags table
+        self.tag_settings_table.setModel(FileTagsModel())
+
+        self.tag_add_button.pressed.connect(self.add_tag)
+        self.tag_remove_button.pressed.connect(self.remove_tag)
+
+        self.thread_pool = QThreadPool()
 
     @staticmethod
     def open_doc_url(*_):
         if QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier:
-            QDesktopServices.openUrl(QUrl('https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#output-template'))
-
+            QDesktopServices.openUrl(
+                QUrl('https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#output-template'))
 
     def eventFilter(self, obj, event):
+        def over_resize_handle(pos):
+            idx = self.suggestions_table.horizontalHeader().logicalIndexAt(pos)
+            if idx < 0:
+                return False
+            left = self.suggestions_table.horizontalHeader().sectionPosition(idx)
+            right = left + self.suggestions_table.horizontalHeader().sectionSize(idx)
+            margin = 3
+            return abs(pos.x() - left) <= margin or abs(pos.x() - right) <= margin
+
+        def update_cursor():
+            global_pos = QCursor.pos()
+            pos = self.suggestions_table.horizontalHeader().mapFromGlobal(global_pos)
+            over_idx = self.suggestions_table.horizontalHeader().logicalIndexAt(pos)
+            if over_idx == -1:
+                return
+
+            idx_url = MetadataSuggestionsTableColumn(over_idx).doc_url()
+
+            if et == QEvent.Type.KeyPress and event.key() == QtCore.Qt.Key.Key_Control:
+                ctrl_down = True
+            elif et == QEvent.Type.KeyRelease and event.key() == QtCore.Qt.Key.Key_Control:
+                ctrl_down = False
+            else:
+                ctrl_down = QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier
+
+            if over_resize_handle(pos):
+                self.suggestions_table.horizontalHeader().setCursor(QCursor(QtCore.Qt.CursorShape.SplitHCursor))
+                return
+
+            if idx_url and ctrl_down:
+                self.suggestions_table.horizontalHeader().setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            else:
+                self.suggestions_table.horizontalHeader().unsetCursor()
+
+        et = event.type()
+
         for box in self.action_combo_boxes.keys():
-            if obj is box.view().viewport():
-                if event.type() in (QEvent.Type.Leave, QEvent.Type.Hide):
-                    self.statusbar.clearMessage()
+            if obj is box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
+                self.statusbar.clearMessage()
+
+        suggestions_header_events = (QEvent.Type.Enter, QEvent.Type.HoverEnter, QEvent.Type.Leave,
+                                     QEvent.Type.HoverLeave,
+                                     QEvent.Type.MouseMove, QEvent.Type.HoverMove)
+
+        if obj is self.suggestions_table.horizontalHeader() and et in suggestions_header_events or obj is self and et in (
+                QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+            update_cursor()
+
         return super(MainWindow, self).eventFilter(obj, event)
 
     def new_library(self):
         if self.treeView.model().has_changed():
-            answer = QMessageBox.question(self, 'Save File', 'The current file has not been saved yet. Do you want to save it?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
+            answer = QMessageBox.question(self, 'Save File',
+                                          'The current file has not been saved yet. Do you want to save it?',
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
 
             if answer == QMessageBox.StandardButton.Yes:
                 if not self.save_library():
@@ -105,7 +183,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def open_library(self):
         if self.treeView.model().has_changed():
-            answer = QMessageBox.question(self, 'Save Library', 'The current library has not been saved yet. Do you want to save it?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
+            answer = QMessageBox.question(self, 'Save Library',
+                                          'The current library has not been saved yet. Do you want to save it?',
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
 
             if answer == QMessageBox.StandardButton.Yes:
                 if not self.save_library():
@@ -133,7 +213,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if not filename.endswith('.xml'):
                 filename += '.xml'
 
-
             self.treeView.model().to_xml(filename)
             self.treeView.model().path = filename
             return True
@@ -148,6 +227,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if dialog.exec():
             self.treeView.model().metadata_table_path = dialog.selectedFiles()[0]
             self.update_metadata_table_label(dialog.selectedFiles()[0])
+
+    def tab_changed(self, *_):
+        self.save_settings(self.get_selected_collection())
 
     def tree_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if not selected.indexes():
@@ -176,24 +258,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_url_name_format.setText(selected_collection.url_name_format)
             self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
 
-            self.update_current_sync_folder(selected_collection.sync_bookmark_file, selected_collection.sync_bookmark_path, selected_collection.sync_bookmark_title_as_url_name)
+            self.update_current_sync_folder(selected_collection.sync_bookmark_file,
+                                            selected_collection.sync_bookmark_path,
+                                            selected_collection.sync_bookmark_title_as_url_name)
 
             for box, status in self.action_combo_boxes.items():
                 box.setCurrentIndex(box.findText(selected_collection.sync_actions[status].gui_string))
 
-            self.update_metadata_suggestions_label()
-            self.update_tags_label()
-            self.update_sync_status_table()
+            self.update_tables()
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
             self.tags_stack.setCurrentIndex(1)
             self.settings_stack.setCurrentIndex(1)
+            self.metadata_suggestions_stack.setCurrentIndex(1)
+            self.file_tag_settings_stack.setCurrentIndex(1)
         else:
             self.sync_stack.setCurrentIndex(0)
             self.metadata_stack.setCurrentIndex(0)
             self.tags_stack.setCurrentIndex(0)
             self.settings_stack.setCurrentIndex(0)
+            self.metadata_suggestions_stack.setCurrentIndex(0)
+            self.file_tag_settings_stack.setCurrentIndex(0)
 
         self.statusbar.clearMessage()
 
@@ -212,13 +298,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.url_name_format = self.settings_url_name_format.text()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
         item.sync_actions = {
-            TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(self.added_combo_box.currentIndex()).action,
-            TrackSyncStatus.NOT_DOWNLOADED: self.not_downloaded_combo_box.model().invisibleRootItem().child(self.not_downloaded_combo_box.currentIndex()).action,
-            TrackSyncStatus.REMOVED_FROM_SOURCE: self.removed_combo_box.model().invisibleRootItem().child(self.removed_combo_box.currentIndex()).action,
-            TrackSyncStatus.LOCAL_FILE: self.local_combo_box.model().invisibleRootItem().child(self.local_combo_box.currentIndex()).action,
-            TrackSyncStatus.PERMANENTLY_DOWNLOADED: self.permanent_combo_box.model().invisibleRootItem().child(self.permanent_combo_box.currentIndex()).action,
-            TrackSyncStatus.DOWNLOADED: self.downloaded_combo_box.model().invisibleRootItem().child(self.downloaded_combo_box.currentIndex()).action,
+            TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(
+                self.added_combo_box.currentIndex()).action,
+            TrackSyncStatus.NOT_DOWNLOADED: self.not_downloaded_combo_box.model().invisibleRootItem().child(
+                self.not_downloaded_combo_box.currentIndex()).action,
+            TrackSyncStatus.REMOVED_FROM_SOURCE: self.removed_combo_box.model().invisibleRootItem().child(
+                self.removed_combo_box.currentIndex()).action,
+            TrackSyncStatus.LOCAL_FILE: self.local_combo_box.model().invisibleRootItem().child(
+                self.local_combo_box.currentIndex()).action,
+            TrackSyncStatus.PERMANENTLY_DOWNLOADED: self.permanent_combo_box.model().invisibleRootItem().child(
+                self.permanent_combo_box.currentIndex()).action,
+            TrackSyncStatus.DOWNLOADED: self.downloaded_combo_box.model().invisibleRootItem().child(
+                self.downloaded_combo_box.currentIndex()).action,
         }
+
+        item.metadata_suggestions = deepcopy(self.fields_table.model().fields)
+        item.file_tags = deepcopy(self.tag_settings_table.model().tags)
+        self.treeView.model().external_metadata_tables = self.external_tables_table.model().tables[1:]
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -231,7 +327,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_collection = current_collection.parent()
         return current_collection
 
-    def update_current_sync_folder(self, file: str, path: list[Collection.PathComponent] | None=None, set_url_name=False):
+    def update_current_sync_folder(self, file: str, path: list[Collection.PathComponent] | None = None,
+                                   set_url_name=False):
         if path is None:
             path = []
 
@@ -276,37 +373,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
 
-    def edit_metadata_suggestions(self):
-        tables = ([ExternalMetadataTable(id=0,
-                                        name='Table of this library',
-                                        path=self.treeView.model().metadata_table_path)] +
-                  deepcopy(self.treeView.model().external_metadata_tables))
-        current_collection = self.get_selected_collection()
-        metadata_suggestions_dialog = MetadataSuggestionsDialog(deepcopy(current_collection.metadata_suggestions),
-                                                                tables,
-                                                                deepcopy(current_collection.file_tags),
-                                                                parent=self)
-
-        if metadata_suggestions_dialog.exec():
-            current_collection.metadata_suggestions = metadata_suggestions_dialog.fields_table.model().fields
-            current_collection.file_tags = metadata_suggestions_dialog.tags_table.model().tags
-            self.treeView.model().external_metadata_tables = metadata_suggestions_dialog.external_tables_table.model().tables[1:]
-            self.update_metadata_suggestions_label()
-            self.update_tags_label()
-
-    def update_metadata_suggestions_label(self):
-        suggestions = [s.name for s in self.get_selected_collection().metadata_suggestions]
-        self.settings_fields_label.setText(self.settings_fields_label.text().split(': ')[0] + ': ' + ', '.join(suggestions))
-
-    def update_tags_label(self):
-        tags = [t.name for t in self.get_selected_collection().file_tags]
-        self.settings_tags_label.setText(self.settings_tags_label.text().split(': ')[0] + ': ' + ', '.join(tags))
-
     def update_metadata_table_label(self, path=''):
         if path:
             self.metadata_table_label.setText(f'Current track metadata table: {path} (Click to change)')
         else:
-            self.metadata_table_label.setText('This library has no track metadata table associated with it. (Click to add one)')
+            self.metadata_table_label.setText(
+                'This library has no track metadata table associated with it. (Click to add one)')
 
     def compare_finished(self, result: tuple):
         error, extra = result
@@ -344,10 +416,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if new_url not in old_urls:
                     selected_collection.appendRow(CollectionUrlItem.from_xml_object(item))
 
-            self.update_sync_status_table()
+            self.update_tables()
         else:
             if isinstance(error, pd.errors.DatabaseError):
-                QMessageBox.warning(self, 'Error', 'Bookmark sync could not be performed because the database is locked. Close your browser and try again.')
+                QMessageBox.warning(self, 'Error',
+                                    'Bookmark sync could not be performed because the database is locked. Close your browser and try again.')
             else:
                 QMessageBox.warning(self, 'Error', 'There were errors while comparing this collection')
 
@@ -358,27 +431,164 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selected_collection = self.get_selected_collection()
         selected_collection_xml = selected_collection.to_xml_object()
 
-        worker = ThreadingWorker(selected_collection_xml.update_sync_status, extra={'selected_collection': selected_collection,
-                                                                                    'selected_collection_xml': selected_collection_xml})
-        # worker.result.connect(lambda _, s=selected_collection, x=selected_collection_xml: self.compare_finished(s, x))
+        worker = ThreadingWorker(selected_collection_xml.update_sync_status,
+                                 extra={'selected_collection': selected_collection,
+                                        'selected_collection_xml': selected_collection_xml})
         worker.signals.result.connect(self.compare_finished)
         self.thread_pool.start(worker)
 
-    def update_sync_status_table(self):
+    def update_tables(self):
         self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
-        self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(update_callback=self.sync_actions_updated, parent=self))
+        self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(
+            update_callback=self.sync_actions_updated, parent=self))
         for row in range(self.sync_status_table.model().rowCount()):
-            self.sync_status_table.openPersistentEditor(self.sync_status_table.model().index(row, FileSyncModelColumn.ACTION))
+            self.sync_status_table.openPersistentEditor(
+                self.sync_status_table.model().index(row, FileSyncModelColumn.ACTION))
         self.sync_status_table.resizeColumnsToContents()
         self.sync_actions_updated('')
 
+        current_collection = self.get_selected_collection()
+
+        # Metadata fields table
+        self.fields_table.setModel(MetadataFieldsModel(deepcopy(current_collection.metadata_suggestions), parent=self))
+        for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.TIMED_DATA,
+                    MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE,
+                    MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
+            self.fields_table.setItemDelegateForColumn(col, CheckboxDelegate(self))
+
+            for row in range(self.fields_table.model().rowCount()):
+                self.fields_table.openPersistentEditor(self.fields_table.model().index(row, col))
+
+        self.fields_table.sortByColumn(MetadataFieldsTableColumn.ENABLED, QtCore.Qt.SortOrder.AscendingOrder)
+        self.fields_table.resizeColumnsToContents()
+
+        self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
+
+        # external tables
+        external_metadata_tables = ([ExternalMetadataTable(id=0,
+                                                           name='Table of this library',
+                                                           path=self.treeView.model().metadata_table_path)] +
+                                    deepcopy(self.treeView.model().external_metadata_tables))
+        self.external_tables_table.setModel(ExternalMetadataTablesModel(external_metadata_tables, parent=self))
+        self.external_tables_table.resizeColumnsToContents()
+
+        # file tags
+        self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
+        self.tag_settings_table.resizeColumnsToContents()
+
     def sync_actions_updated(self, text):
-        if text == TrackSyncAction.DECIDE_INDIVIDUALLY.gui_string or TrackSyncAction.DECIDE_INDIVIDUALLY in list(self.sync_status_table.model().df['action']):
+        if text == TrackSyncAction.DECIDE_INDIVIDUALLY.gui_string or TrackSyncAction.DECIDE_INDIVIDUALLY in list(
+                self.sync_status_table.model().df['action']):
             self.sync_button.setEnabled(False)
             self.sync_button.setStatusTip('All "Decide individually" actions have to be resolved before sync can start')
         else:
             self.sync_button.setEnabled(True)
             self.sync_button.setStatusTip('')
+
+    def add_field(self):
+        self.fields_table.model().beginInsertRows(QModelIndex(), self.fields_table.model().rowCount(),
+                                                  self.fields_table.model().rowCount())
+        self.fields_table.model().fields.append(MetadataField('', []))
+
+        for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS,
+                    MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE,
+                    MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
+            self.fields_table.openPersistentEditor(
+                self.fields_table.model().index(self.fields_table.model().rowCount() - 1, col))
+        self.fields_table.model().endInsertRows()
+
+        new_index = self.fields_table.model().index(self.fields_table.model().rowCount() - 1,
+                                                    MetadataFieldsTableColumn.NAME)
+        self.fields_table.edit(new_index)
+
+    def remove_field(self):
+        index = self.fields_table.currentIndex().row()
+        if index == -1:
+            return
+        self.fields_table.model().beginRemoveRows(QModelIndex(), index, index)
+        self.fields_table.model().fields.pop(index)
+        self.fields_table.model().endRemoveRows()
+
+    def field_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
+        if selected.isEmpty():
+            return
+        field = self.fields_table.model().fields[selected.indexes()[0].row()]
+        self.selected_field_label.setText(self.selected_field_label.text().split(':')[0] + ': ' + field.name)
+        self.suggestions_table.setModel(MetadataSuggestionsModel(field.suggestions, parent=self))
+        self.suggestions_table.resizeColumnsToContents()
+
+    def suggestions_table_header_clicked(self, section: int):
+        modifier = QtWidgets.QApplication.keyboardModifiers()
+        sec_url = MetadataSuggestionsTableColumn(section).doc_url()
+        if modifier == QtCore.Qt.KeyboardModifier.ControlModifier:
+            QDesktopServices.openUrl(QUrl(sec_url))
+
+    def add_suggestion(self):
+        if self.suggestions_table.model() is None:
+            return
+
+        row_idx = self.suggestions_table.currentIndex().row()
+        if row_idx != -1 and QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ShiftModifier:
+            new_idx = row_idx + 1
+        else:
+            new_idx = self.suggestions_table.model().rowCount()
+
+        self.suggestions_table.model().beginInsertRows(QModelIndex(), new_idx, new_idx)
+        self.suggestions_table.model().suggestions.insert(new_idx, MetadataSuggestion(''))
+        self.suggestions_table.model().endInsertRows()
+
+        new_index = self.suggestions_table.model().index(new_idx, MetadataSuggestionsTableColumn.FROM)
+        self.suggestions_table.edit(new_index)
+
+    def remove_suggestion(self):
+        if self.suggestions_table.model() is None or self.suggestions_table.currentIndex().row() == -1:
+            return
+
+        remove_idx = self.suggestions_table.currentIndex().row()
+        self.suggestions_table.model().beginRemoveRows(QModelIndex(), remove_idx, remove_idx)
+        self.suggestions_table.model().suggestions.pop(remove_idx)
+        self.suggestions_table.model().endRemoveRows()
+
+    def add_external_table(self):
+        self.external_tables_table.model().beginInsertRows(QModelIndex(), self.external_tables_table.model().rowCount(),
+                                                           self.external_tables_table.model().rowCount())
+
+        new_id = max(self.external_tables_table.model().tables, key=lambda t: t.id).id + 1
+        self.external_tables_table.model().tables.append(ExternalMetadataTable(new_id))
+
+        self.external_tables_table.model().endInsertRows()
+
+        new_index = self.external_tables_table.model().index(self.external_tables_table.model().rowCount() - 1,
+                                                             ExternalMetadataTablesColumn.NAME)
+        self.external_tables_table.edit(new_index)
+
+    def remove_external_table(self):
+        index = self.external_tables_table.currentIndex().row()
+        if index <= 0:
+            return
+
+        self.external_tables_table.model().beginRemoveRows(QModelIndex(), index, index)
+        self.external_tables_table.model().tables.pop(index)
+        self.external_tables_table.model().endRemoveRows()
+
+    def add_tag(self):
+        self.tag_settings_table.model().beginInsertRows(QModelIndex(), self.tag_settings_table.model().rowCount(),
+                                                        self.tag_settings_table.model().rowCount())
+        self.tag_settings_table.model().tags.append(FileTag(self.tag_combobox.currentText()))
+        self.tag_settings_table.model().endInsertRows()
+
+        new_index = self.tag_settings_table.model().index(self.tag_settings_table.model().rowCount() - 1,
+                                                          FileTagsTableColumn.FORMAT)
+        self.tag_settings_table.edit(new_index)
+
+    def remove_tag(self):
+        index = self.tag_settings_table.currentIndex().row()
+        if index == -1:
+            return
+
+        self.tag_settings_table.model().beginRemoveRows(QModelIndex(), index, index)
+        self.tag_settings_table.model().tags.pop(index)
+        self.tag_settings_table.model().endRemoveRows()
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
@@ -396,6 +606,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 event.ignore()
             elif answer == QMessageBox.StandardButton.No:
                 event.accept()
+
 
 class TreeContextMenu(QMenu):
     def __init__(self, parent: QTreeView, point):
@@ -425,7 +636,8 @@ class TreeContextMenu(QMenu):
             add_url_action.setIcon(QIcon.fromTheme('list-add'))
             add_url_action.triggered.connect(self.add_url)
             if self.item.sync_bookmark_file:
-                add_url_action.setToolTip('This collection is synchronized with a bookmarks folder, so manually adding URLs is not possible')
+                add_url_action.setToolTip(
+                    'This collection is synchronized with a bookmarks folder, so manually adding URLs is not possible')
                 add_url_action.setEnabled(False)
 
             self.addAction(add_url_action)
@@ -433,7 +645,8 @@ class TreeContextMenu(QMenu):
             import_urls_from_bookmarks_action = QAction('Import URLs From Bookmarks')
             import_urls_from_bookmarks_action.triggered.connect(self.import_from_bookmarks)
             if self.item.sync_bookmark_file:
-                import_urls_from_bookmarks_action.setToolTip('This collection is synchronized with a bookmarks folder, so manually adding URLs is not possible')
+                import_urls_from_bookmarks_action.setToolTip(
+                    'This collection is synchronized with a bookmarks folder, so manually adding URLs is not possible')
                 import_urls_from_bookmarks_action.setEnabled(False)
             self.addAction(import_urls_from_bookmarks_action)
         elif isinstance(self.item, CollectionUrlItem):
@@ -451,14 +664,14 @@ class TreeContextMenu(QMenu):
             delete_action.triggered.connect(self.remove)
 
             if isinstance(self.item, CollectionUrlItem) and self.item.parent().sync_bookmark_file:
-                delete_action.setToolTip('This collection is synchronized with a bookmarks folder, so manually deleting URLs is not possible')
+                delete_action.setToolTip(
+                    'This collection is synchronized with a bookmarks folder, so manually deleting URLs is not possible')
                 delete_action.setEnabled(False)
 
             self.addAction(delete_action)
 
         self.setToolTipsVisible(True)
         self.exec(self.parent.mapToGlobal(point))
-
 
     def add_folder(self, is_folder: bool):
         if is_folder:
@@ -509,3 +722,10 @@ class TreeContextMenu(QMenu):
 
     def toggle_concat(self):
         self.item.concat = not self.item.concat
+
+
+class MetadataSuggestionsTableStyle(QtWidgets.QProxyStyle):
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element == QStyle.PrimitiveElement.PE_IndicatorItemViewItemDrop and not option.rect.isNull():
+            option.rect.setHeight(1)
+        super().drawPrimitive(element, option, painter, widget)
