@@ -85,6 +85,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.field_remove_button.pressed.connect(self.remove_field)
 
         # metadata suggestions table
+        self.suggestions_table.setModel(MetadataSuggestionsModel())
         self.suggestions_table.setStyle(MetadataSuggestionsTableStyle())
         self.suggestions_table.horizontalHeader().setMouseTracking(True)
         self.suggestions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
@@ -107,6 +108,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tag_remove_button.pressed.connect(self.remove_tag)
 
         self.thread_pool = QThreadPool()
+
+        self.showMaximized()
 
     @staticmethod
     def open_doc_url(*_):
@@ -466,6 +469,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fields_table.resizeColumnsToContents()
 
         self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
+
+        self.suggestions_table.setModel(MetadataSuggestionsModel())
 
         # external tables
         external_metadata_tables = ([ExternalMetadataTable(id=0,

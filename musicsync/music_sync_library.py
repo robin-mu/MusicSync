@@ -248,6 +248,7 @@ class MetadataSuggestion(XmlObject):
     replace_with: str = ''
     split_separators: str = ''
     split_slice: str = ''
+    condition: str = ''
 
     @staticmethod
     def from_xml(el: Element) -> 'MetadataSuggestion':
