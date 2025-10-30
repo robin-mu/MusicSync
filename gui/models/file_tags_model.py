@@ -18,7 +18,7 @@ class FileTagsTableColumn(IntEnum):
             return 'Format'
         return None
 
-    def tool_tip(self):
+    def status_tip(self):
         if self == FileTagsTableColumn.FORMAT:
             return 'The format is the same as yt-dlp\'s output template. Data from tables can be referenced with "[id]:[field]".'
         return None
@@ -49,8 +49,8 @@ class FileTagsModel(QtCore.QAbstractTableModel):
     def headerData(self, section, orientation, /, role = ...):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return str(FileTagsTableColumn(section))
-        if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-            return FileTagsTableColumn(section).tool_tip()
+        if role == QtCore.Qt.ItemDataRole.StatusTipRole:
+            return FileTagsTableColumn(section).status_tip()
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):

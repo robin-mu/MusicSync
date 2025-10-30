@@ -31,11 +31,11 @@ class MetadataSuggestionsTableColumn(IntEnum):
             return 'Index/Slice'
         return None
 
-    def tool_tip(self):
+    def status_tip(self):
         if self == MetadataSuggestionsTableColumn.FROM:
-            return 'Format string to generate the suggestion from. Syntax is the same as FROM in yt-dlp\'s --parse-metadata (ctrl+click to view documentation)'
+            return 'Format string to generate the suggestion from. Syntax is the same as "FROM" in yt-dlp\'s --parse-metadata (ctrl+click to view documentation)'
         if self == MetadataSuggestionsTableColumn.TO:
-            return 'Regex to filter the format string. Similar to TO in yt-dlp\'s --parse-metadata, but only the first capture group will be kept (ctrl+click to view documentation)'
+            return 'Regex to filter the format string. Similar to "TO" in yt-dlp\'s --parse-metadata, but only the first unnamed capture group will be kept (ctrl+click to view documentation)'
         if self == MetadataSuggestionsTableColumn.REPLACE_REGEX:
             return 'Regex to replace in the filtered string. Same as REGEX in yt-dlp\'s --replace-in-metadata (ctrl+click to view documentation)'
         if self == MetadataSuggestionsTableColumn.REPLACE_WITH:
@@ -49,7 +49,7 @@ class MetadataSuggestionsTableColumn(IntEnum):
     def doc_url(self):
         if self in (MetadataSuggestionsTableColumn.FROM, MetadataSuggestionsTableColumn.TO,
                     MetadataSuggestionsTableColumn.REPLACE_REGEX, MetadataSuggestionsTableColumn.REPLACE_WITH):
-            return 'https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#modifying-metadata'
+            return 'https://github.com/robin-mu/MusicSync?tab=readme-ov-file#metadata-suggestions-table'
         return None
 
 class MetadataSuggestionsModel(QAbstractTableModel):
@@ -78,8 +78,8 @@ class MetadataSuggestionsModel(QAbstractTableModel):
         if orientation == QtCore.Qt.Orientation.Horizontal:
             if role == QtCore.Qt.ItemDataRole.DisplayRole:
                 return str(MetadataSuggestionsTableColumn(section))
-            if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-                return MetadataSuggestionsTableColumn(section).tool_tip()
+            if role == QtCore.Qt.ItemDataRole.StatusTipRole:
+                return MetadataSuggestionsTableColumn(section).status_tip()
         elif orientation == QtCore.Qt.Orientation.Vertical:
             if role == QtCore.Qt.ItemDataRole.DisplayRole:
                 return str(section + 1)

@@ -45,7 +45,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionChange_Track_Metdata_Table.triggered.connect(self.change_metadata_table)
 
         # Library Tree View
-        self.treeView.setModel(LibraryModel())
+        self.treeView.setModel(LibraryModel('a.xml'))
         self.treeView.expandAll()
 
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
@@ -112,7 +112,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def open_doc_url(*_):
         if QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier:
             QDesktopServices.openUrl(
-                QUrl('https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#output-template'))
+                QUrl('https://github.com/robin-mu/MusicSync?tab=readme-ov-file#formatting'))
 
     def eventFilter(self, obj, event):
         def over_resize_handle(pos):

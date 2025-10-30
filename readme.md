@@ -94,7 +94,6 @@ Many settings in the following three settings tabs use format strings following 
 ### Collection settings
 The following settings are available:
 
----
 #### General settings
 - **Folder path**: The base folder where all tracks in this collection will be saved.
 - **Filename format**: [Formatted](#formatting) setting determining the filename for downloaded tracks. The file extension will be appended automatically. The filename will be generated last, so you can include data from custom metadata fields and file tags in the format string. Default: `%(title)s [%(id)s]` (same as yt-dlp)

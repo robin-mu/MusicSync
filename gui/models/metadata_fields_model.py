@@ -31,7 +31,7 @@ class MetadataFieldsTableColumn(IntEnum):
             return 'Default for format \noption "Remove brackets"'
         return None
 
-    def tool_tip(self):
+    def status_tip(self):
         if self == MetadataFieldsTableColumn.NAME:
             return 'The name of the field'
         if self == MetadataFieldsTableColumn.ENABLED:
@@ -78,8 +78,8 @@ class MetadataFieldsModel(QtCore.QAbstractTableModel):
     def headerData(self, section, orientation, /, role = ...):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return str(MetadataFieldsTableColumn(section))
-        if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-            return MetadataFieldsTableColumn(section).tool_tip()
+        if role == QtCore.Qt.ItemDataRole.StatusTipRole:
+            return MetadataFieldsTableColumn(section).status_tip()
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):
