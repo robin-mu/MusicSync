@@ -53,6 +53,7 @@ class CollectionItem(XmlObjectModelItem):
         self.metadata_suggestions = kwargs.get('metadata_suggestions', Collection.DEFAULT_METADATA_SUGGESTIONS)
         self.file_tags = kwargs.get('file_tags', Collection.DEFAULT_FILE_TAGS)
         self.url_name_format = kwargs.get('url_name_format', '')
+        self.auto_concat_urls = kwargs.get('auto_concat_urls', '')
 
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':

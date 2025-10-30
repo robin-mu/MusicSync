@@ -361,6 +361,7 @@ class Collection(XmlObject):
     save_playlists_to_subfolders: bool = False
     url_name_format: str = ''
     exclude_after_download: bool = False
+    auto_concat_urls: str = ''
 
     sync_bookmark_file: str = ''
     sync_bookmark_path: list[PathComponent] = field(default_factory=list)

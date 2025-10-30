@@ -257,6 +257,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_subfolder.setChecked(selected_collection.save_playlists_to_subfolders)
             self.settings_url_name_format.setText(selected_collection.url_name_format)
             self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
+            self.settings_auto_concat_urls.setText(selected_collection.auto_concat_urls)
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file,
                                             selected_collection.sync_bookmark_path,
@@ -297,6 +298,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
         item.url_name_format = self.settings_url_name_format.text()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
+        item.auto_concat_urls = self.settings_auto_concat_urls.text()
+
         item.sync_actions = {
             TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(
                 self.added_combo_box.currentIndex()).action,

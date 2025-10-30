@@ -101,6 +101,7 @@ The following settings are available:
 - **URL name format**: [Formatted](#formatting) setting determining the name of the URL. Default: `%(title)s`
 - **Save playlist-type URLs in subfolders**: if yt-dlp reports that a URL is a playlist, its tracks will be saved in a subfolder of the collection's folder path. The name of the subfolder is the same as the URL name.
 - **Automatically exclude URLs after first download**: Can be useful for playlists whose contents don't change and don't have to be synced after the first download, e.g. albums.
+- **Automatically concatenate videos for these URLs**: A comma-separated list of URLs (regex supported) whose videos will be automatically concatenated into one file if yt-dlp reports them to be a playlist. A literal comma has to be escaped like `\,`.
 ---
 
 #### Sync this collection with a bookmark folder
