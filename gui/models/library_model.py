@@ -113,6 +113,8 @@ class CollectionUrlItem(XmlObjectModelItem):
         self.url = collection_url.url
         self.tracks = collection_url.tracks
         self.excluded = collection_url.excluded
+        self.concat = collection_url.concat
+        self.is_playlist = collection_url.is_playlist
 
         if self.text() == self.url or self.text() == '':
             self.set_name(collection_url.name)

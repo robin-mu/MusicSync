@@ -521,6 +521,27 @@ class CollectionUrl(XmlObject):
         return el
 
 
+class MetadataStatus(StrEnum):
+    NEW = auto(), 'New'
+    AUTOMATICALLY = auto(), 'Selected automatically'
+    MANUALLY = auto(), 'Selected manually'
+
+    def __new__(cls, value, gui_string):
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._sort_key = len(cls.__members__)
+        obj._gui_string = gui_string
+        return obj
+
+    @property
+    def sort_key(self) -> int:
+        return self._sort_key
+
+    @property
+    def gui_string(self) -> str:
+        return self._gui_string
+
+
 @dataclass
 class Track(XmlObject):
     url: str
@@ -529,6 +550,7 @@ class Track(XmlObject):
     filename: str = ''
     playlist_index: str = ''
     permanently_downloaded: bool = False
+    metadata_status: MetadataStatus = MetadataStatus.NEW
 
     def __post_init__(self):
         if isinstance(self.permanently_downloaded, str):
@@ -538,12 +560,14 @@ class Track(XmlObject):
     def from_xml(el: Element) -> 'Track':
         return Track(url=el.attrib['url'], status=TrackSyncStatus.__members__[el.attrib['status']],
                      filename=el.attrib['path'], title=el.attrib['title'], playlist_index=el.attrib['playlist_index'],
-                     permanently_downloaded=el.attrib['permanently_downloaded'])
+                     permanently_downloaded=el.attrib['permanently_downloaded'],
+                     metadata_status=MetadataStatus.__members__[el.attrib['metadata_status']])
 
     def to_xml(self) -> Element:
         return et.Element('Track', url=self.url, status=self.status.name, path=self.filename,
                           permanently_downloaded=str(self.permanently_downloaded),
-                          title=self.title, playlist_index=self.playlist_index)
+                          title=self.title, playlist_index=self.playlist_index,
+                          metadata_status=self.metadata_status.name)
 
 
 if __name__ == '__main__':

@@ -139,7 +139,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                         # 2. LOCAL_FILE: File is not in the permanently downloaded files, and does not correspond to a source track
                         local_track.status = lib.TrackSyncStatus.LOCAL_FILE
 
-                    logger.debug(f'{local_track.url} ({local_track.filename}): Not in URL tracks and marked as {local_track.status}.')
+                    logger.debug(f'{local_track.url} ({local_track.filename}): Not in URL tracks and marked as {local_track.status}')
 
             for remote_track_url, remote_title, remote_playlist_index in remote_infos:
                 # 3. ADDED_TO_SOURCE: Track is present in source, but was not present in previous sync
@@ -155,7 +155,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                     local_track: lib.Track = coll_url.tracks[remote_track_url]
                     if local_track.filename not in url_folder_contents:
                         # 4. NOT_DOWNLOADED: Track is present in source, was also present in previous sync, but corresponding file does not exist
-                        logger.debug(f'{remote_track_url} ({remote_title}): File {local_track.filename} does not exist. Marked as {lib.TrackSyncStatus.NOT_DOWNLOADED}.')
+                        logger.debug(f'{remote_track_url} ({remote_title}): File {local_track.filename} does not exist. Marked as {lib.TrackSyncStatus.NOT_DOWNLOADED}')
 
                         local_track.status = lib.TrackSyncStatus.NOT_DOWNLOADED
                     elif local_track.status != lib.TrackSyncStatus.PERMANENTLY_DOWNLOADED:
