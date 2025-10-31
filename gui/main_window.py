@@ -91,6 +91,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.suggestions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
         self.suggestions_table.horizontalHeader().installEventFilter(self)
         self.installEventFilter(self)
+        self.suggestions_table.resizeColumnsToContents()
 
         self.suggestions_add_button.pressed.connect(self.add_suggestion)
         self.suggestions_remove_button.pressed.connect(self.remove_suggestion)
@@ -261,6 +262,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_url_name_format.setText(selected_collection.url_name_format)
             self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
             self.settings_auto_concat_urls.setText(selected_collection.auto_concat_urls)
+            self.settings_excluded_yt_dlp_fields.setText(selected_collection.excluded_yt_dlp_fields)
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file,
                                             selected_collection.sync_bookmark_path,
@@ -302,6 +304,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.url_name_format = self.settings_url_name_format.text()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
         item.auto_concat_urls = self.settings_auto_concat_urls.text()
+        item.excluded_yt_dlp_fields = self.settings_excluded_yt_dlp_fields.text()
 
         item.sync_actions = {
             TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(

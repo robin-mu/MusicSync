@@ -351,6 +351,7 @@ class Collection(XmlObject):
 
     DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
     DEFAULT_URL_NAME_FORMAT: ClassVar[str] = '%(title)s'
+    DEFAULT_EXCLUDED_YT_DLP_FIELDS: ClassVar[str] = 'formats, automatic_captions, subtitles,heatmap, protocol, http_headers, _format_sort_fields, _version'
 
     PathComponent = namedtuple('PathComponent', ['id', 'name'])
 
@@ -363,6 +364,7 @@ class Collection(XmlObject):
     url_name_format: str = ''
     exclude_after_download: bool = False
     auto_concat_urls: str = ''
+    excluded_yt_dlp_fields: str = DEFAULT_EXCLUDED_YT_DLP_FIELDS
 
     sync_bookmark_file: str = ''
     sync_bookmark_path: list[PathComponent] = field(default_factory=list)
@@ -419,10 +421,14 @@ class Collection(XmlObject):
         attrs.pop('file_tags')
         attrs.pop('metadata_suggestions')
         attrs.pop('downloader')
+        attrs.pop('excluded_yt_dlp_fields')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
         attrs['exclude_after_download'] = str(self.exclude_after_download)
 
         el = et.Element('Collection', **attrs)
+        if self.excluded_yt_dlp_fields != Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS:
+            el.attrib['excluded_yt_dlp_fields'] = self.excluded_yt_dlp_fields
+
         if self.sync_bookmark_file:
             bookmark_sync = et.Element('BookmarkSync', file=self.sync_bookmark_file,
                                        title_as_url_name=str(self.sync_bookmark_title_as_url_name))
@@ -450,8 +456,7 @@ class Collection(XmlObject):
         return el
 
     def update_sync_status(self, progress_callback: Callable | None = None) -> None | Exception:
-        if self.downloader is None:
-            self.downloader = dl.MusicSyncDownloader(self)
+        self.downloader = dl.MusicSyncDownloader(self)
 
         try:
             self.downloader.update_sync_status(progress_callback=progress_callback)

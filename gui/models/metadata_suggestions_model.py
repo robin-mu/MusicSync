@@ -15,7 +15,7 @@ class MetadataSuggestionsTableColumn(IntEnum):
     REPLACE_WITH = 3
     SPLIT = 4
     SLICE = 5
-    CONDITION = 6
+    CONDITIONS = 6
 
     def __str__(self):
         if self == MetadataSuggestionsTableColumn.FROM:
@@ -30,8 +30,8 @@ class MetadataSuggestionsTableColumn(IntEnum):
             return 'Split at'
         if self == MetadataSuggestionsTableColumn.SLICE:
             return 'Index/Slice'
-        if self == MetadataSuggestionsTableColumn.CONDITION:
-            return 'Condition'
+        if self == MetadataSuggestionsTableColumn.CONDITIONS:
+            return 'Conditions'
         return None
 
     def status_tip(self):
@@ -47,16 +47,16 @@ class MetadataSuggestionsTableColumn(IntEnum):
             return r'Comma-separated list of separators along each of which the resulting string will be split. Every split entry will become one suggestion. A comma inside a separator has to be escaped like \,'
         if self == MetadataSuggestionsTableColumn.SLICE:
             return 'Index or python slice to process the resulting split'
-        if self == MetadataSuggestionsTableColumn.CONDITION:
-            return 'The suggestion will only be generated if the condition is true. Syntax is the same as the condition in brackets when filtering formats in yt-dlp (ctrl+click to view documentation)'
+        if self == MetadataSuggestionsTableColumn.CONDITIONS:
+            return 'Comma-separated list of conditions. Syntax is the same as for the --match-filters option of yt-dlp. Suggestion will only be generated if at least one of the conditions is true. (ctrl+click to view documentation)'
         return None
 
     def doc_url(self):
         if self in (MetadataSuggestionsTableColumn.FROM, MetadataSuggestionsTableColumn.TO,
                     MetadataSuggestionsTableColumn.REPLACE_REGEX, MetadataSuggestionsTableColumn.REPLACE_WITH):
             return 'https://github.com/robin-mu/MusicSync?tab=readme-ov-file#metadata-suggestions-table'
-        if self == MetadataSuggestionsTableColumn.CONDITION:
-            return 'https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#filtering-formats'
+        if self == MetadataSuggestionsTableColumn.CONDITIONS:
+            return 'https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#video-selection'
         return None
 
 class MetadataSuggestionsModel(QAbstractTableModel):
@@ -163,5 +163,5 @@ class MetadataSuggestionsModel(QAbstractTableModel):
             suggestion.split_separators = value
         elif column == MetadataSuggestionsTableColumn.SLICE:
             suggestion.split_slice = value
-        elif column == MetadataSuggestionsTableColumn.CONDITION:
+        elif column == MetadataSuggestionsTableColumn.CONDITIONS:
             suggestion.condition = value

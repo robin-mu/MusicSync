@@ -54,6 +54,7 @@ class CollectionItem(XmlObjectModelItem):
         self.file_tags = kwargs.get('file_tags', Collection.DEFAULT_FILE_TAGS)
         self.url_name_format = kwargs.get('url_name_format', '')
         self.auto_concat_urls = kwargs.get('auto_concat_urls', '')
+        self.excluded_yt_dlp_fields = kwargs.get('excluded_yt_dlp_fields', Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS)
 
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':

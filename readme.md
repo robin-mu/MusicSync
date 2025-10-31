@@ -102,6 +102,7 @@ The following settings are available:
 - **Save playlist-type URLs in subfolders**: if yt-dlp reports that a URL is a playlist, its tracks will be saved in a subfolder of the collection's folder path. The name of the subfolder is the same as the URL name.
 - **Automatically exclude URLs after first download**: Can be useful for playlists whose contents don't change and don't have to be synced after the first download, e.g. albums.
 - **Automatically concatenate videos for these URLs**: A comma-separated list of URLs (regex supported) whose videos will be automatically concatenated into one file if yt-dlp reports them to be a playlist. A literal comma has to be escaped like `\,`.
+- **Exclude these yt-dlp fields from the metadata table**: yt-dlp's info dicts contain data that is not relevant metadata or too big to be saved in the metadata table. [These](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/common.py#L124-L487) are all fields that info-dict can contain, but certain pages also set additional fields. In this setting you can provide a comma-separated list of fields which are not saved in the metadata table. They are still saved temporarily so that they can be accessed in metadata selection right after downloading, but are deleted when MusicSync is closed, so they can not be accessed in metadata selection in the future without redownloading metadata first.
 ---
 
 #### Sync this collection with a bookmark folder
@@ -138,6 +139,7 @@ In the lower table, you can configure which suggestions will be generated for th
 - **Replace with**: Format string to replace the regex with. Same as `REPLACE` in yt-dlp's [`--replace-in-metadata`](https://github.com/yt-dlp/yt-dlp/tree/master?tab=readme-ov-file#modifying-metadata), but the string may also be formatted like `FROM` in `--parse-metadata`.
 - **Split at**: Comma-separated list of separators along each of which the resulting string (after filtering and replacing) will be split (separately, so first the string will be split by the first separator and every entry becomes one suggestion, then the string will be split by the second separator and every entry becomes another suggestion etc.). Every split entry will become one suggestion. A comma inside a separator has to be escaped like `\,`
 - **Index/Slice**: Index or python slice (like `[start]:[stop]:[step]`) to process the resulting list of suggestions.
+- **Conditions**: Comma-separated list of conditions. Syntax is the same as for the [--match-filters](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#video-selection) option of yt-dlp. The suggestion will only be generated if at least one of the conditions is true.
 
 ### File tags and operations
 In this table, you can select the tags that should be added to downloaded files and their respective values. You can also execute various file operations via [file plugins](#file-plugins).
