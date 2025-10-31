@@ -6,8 +6,8 @@ import pandas as pd
 import yt_dlp
 
 import musicsync.music_sync_library as lib
-from ..bookmark_library import BookmarkLibrary
-from ..utils import classproperty, Logger
+from .bookmark_library import BookmarkLibrary
+from .utils import classproperty, Logger
 
 RemoteInfo = namedtuple('RemoteInfo', ['url', 'title', 'playlist_index'])
 
@@ -64,7 +64,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             collection_urls = [c.url for c in collection.urls]
             for child in folder.values():
                 if child.url not in collection_urls:
-                    logger.debug(f'URL {child.url} ({child.bookmark_title}) added to collection {collection.name}')
+                    logger.debug(f'URL {child.url} ({child.bookmark_title}) added to collection "{collection.name}"')
                     collection.urls.append(lib.CollectionUrl(url=child.url,
                                                          name=child.bookmark_title if collection.sync_bookmark_title_as_url_name else ''))
 
@@ -72,7 +72,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             to_delete_indexes = []
             for i, collection_url in enumerate(collection.urls):
                 if collection_url.url not in bookmark_urls:
-                    logger.debug(f'URL {collection_url.url} ({collection_url.name}) removed from collection {collection.name}')
+                    logger.debug(f'URL {collection_url.url} ({collection_url.name}) removed from collection "{collection.name}"')
                     to_delete_indexes.append(i)
 
                     if delete_files:
@@ -96,8 +96,14 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
         # download track info of all collection urls
         logger.prefix = 'update_sync_status'
-        for coll_url in collection.urls:
+        for (i, coll_url) in enumerate(collection.urls):
             logger.reset_indent()
+
+            if coll_url.name:
+                progress_text = f'"{coll_url.name}" ({coll_url.url})'
+            else:
+                progress_text = f'{coll_url.url}'
+            progress_callback(i / len(collection.urls), f'Downloading info for {progress_text}')
 
             if coll_url.excluded:
                 logger.debug(f'{coll_url} is excluded. Skipping...')
@@ -199,7 +205,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
 
 if __name__ == '__main__':
-    library = lib.MusicSyncLibrary.read_xml('../../a.xml')
+    library = lib.MusicSyncLibrary.read_xml('../a.xml')
     c = library.children[0].children[0]
     downloader = MusicSyncDownloader(c)
 

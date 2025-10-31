@@ -57,12 +57,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # File sync tab
         self.compare_button.pressed.connect(self.compare_collection)
 
+        self.update_sync_buttons()
+
         # Collection settings tab
         self.settings_path_browse.pressed.connect(self.browse_folder_path)
         self.settings_sync_button.pressed.connect(self.change_sync_folder)
         self.settings_stop_sync_button.pressed.connect(lambda: self.update_current_sync_folder(''))
 
         self.metadata_table_label.mousePressEvent = self.change_metadata_table
+        self.metadata_table_label_2.mousePressEvent = self.change_metadata_table
 
         self.action_combo_boxes = dict(
             zip([self.added_combo_box, self.not_downloaded_combo_box, self.removed_combo_box, self.local_combo_box,
@@ -108,7 +111,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tag_add_button.pressed.connect(self.add_tag)
         self.tag_remove_button.pressed.connect(self.remove_tag)
 
-        self.thread_pool = QThreadPool()
+        self.thread_pool = QThreadPool.globalInstance()
 
         self.showMaximized()
 
@@ -184,6 +187,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.treeView.setModel(LibraryModel())
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.update_metadata_table_label()
+        self.update_sync_buttons()
+        self.update_sync_stack()
 
     def open_library(self):
         if self.treeView.model().has_changed():
@@ -203,6 +208,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
             self.treeView.expandAll()
             self.update_metadata_table_label(self.treeView.model().metadata_table_path)
+            self.update_sync_buttons()
+            self.update_sync_stack()
 
     def save_library(self):
         if self.treeView.model().path:
@@ -223,14 +230,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return False
 
     def change_metadata_table(self, *_):
-        dialog = QFileDialog(self)
-        dialog.setWindowTitle('Select a metadata table to associate this library with')
-        dialog.setNameFilter('CSV files (*.csv)')
-        dialog.setFileMode(QFileDialog.FileMode.AnyFile)
+        filename, ok = QFileDialog.getSaveFileName(self, 'Select a metadata table to associate this library with', filter='CSV files (*.csv) (*.csv)')
 
-        if dialog.exec():
-            self.treeView.model().metadata_table_path = dialog.selectedFiles()[0]
-            self.update_metadata_table_label(dialog.selectedFiles()[0])
+        if filename:
+            if not filename.endswith('.csv'):
+                filename += '.csv'
+
+            self.treeView.model().metadata_table_path = filename
+            self.update_metadata_table_label(filename)
 
     def tab_changed(self, *_):
         self.save_settings(self.get_selected_collection())
@@ -272,6 +279,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 box.setCurrentIndex(box.findText(selected_collection.sync_actions[status].gui_string))
 
             self.update_tables()
+            self.update_sync_buttons()
+            self.update_sync_stack()
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
@@ -330,8 +339,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if folder:
             self.settings_folder_path.setText(folder)
 
-    def get_selected_collection(self) -> CollectionItem:
-        current_collection = self.treeView.model().itemFromIndex(self.treeView.selectedIndexes()[0])
+    def get_selected_collection(self) -> CollectionItem | None:
+        selected_indexes = self.treeView.selectedIndexes()
+        if not selected_indexes:
+            return None
+
+        current_collection = self.treeView.model().itemFromIndex(selected_indexes[0])
+        if isinstance(current_collection, FolderItem):
+            return None
+
         if isinstance(current_collection, CollectionUrlItem):
             current_collection = current_collection.parent()
         return current_collection
@@ -384,18 +400,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def update_metadata_table_label(self, path=''):
         if path:
-            self.metadata_table_label.setText(f'Current track metadata table: {path} (Click to change)')
+            self.metadata_table_label.setText(f'Current metadata table: {path} (Click to change)')
+            self.metadata_table_label_2.setText(f'Current metadata table: {path} (Click to change)')
         else:
             self.metadata_table_label.setText(
-                'This library has no track metadata table associated with it. (Click to add one)')
+                'This library has no metadata table associated with it. (Click to select one)')
+            self.metadata_table_label_2.setText(
+                'This library has no metadata table associated with it. (Click to select one)')
 
-    def compare_finished(self, result: tuple):
-        error, extra = result
+    def compare_collection(self):
+        selected_collection = self.get_selected_collection()
+        selected_collection_xml = selected_collection.to_xml_object()
+
+        selected_collection.comparing = True
+
+        worker = ThreadingWorker(selected_collection_xml.update_sync_status,
+                                 extra={'selected_collection': selected_collection,
+                                        'selected_collection_xml': selected_collection_xml})
+        worker.signals.result.connect(self.compare_finished)
+        worker.signals.progress.connect(self.update_sync_progress)
+        self.thread_pool.start(worker)
+
+        self.update_sync_buttons()
+        self.update_sync_stack()
+
+    def compare_finished(self, error, extra):
+        selected_collection: CollectionItem = extra['selected_collection']
+        selected_collection_xml: Collection = extra['selected_collection_xml']
 
         if error is None:
-            selected_collection: CollectionItem = extra['selected_collection']
-            selected_collection_xml: Collection = extra['selected_collection_xml']
-
             old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for
                                                       i in range(selected_collection.rowCount())}
             new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
@@ -433,28 +466,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 QMessageBox.warning(self, 'Error', 'There were errors while comparing this collection')
 
-        self.compare_button.setEnabled(True)
-
-    def compare_collection(self):
-        self.compare_button.setEnabled(False)
-        selected_collection = self.get_selected_collection()
-        selected_collection_xml = selected_collection.to_xml_object()
-
-        worker = ThreadingWorker(selected_collection_xml.update_sync_status,
-                                 extra={'selected_collection': selected_collection,
-                                        'selected_collection_xml': selected_collection_xml})
-        worker.signals.result.connect(self.compare_finished)
-        self.thread_pool.start(worker)
+        selected_collection.comparing = False
+        self.update_sync_buttons()
+        self.update_sync_stack()
 
     def update_tables(self):
         self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
         self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(
-            update_callback=self.sync_actions_updated, parent=self))
+            update_callback=self.update_sync_buttons, parent=self))
         for row in range(self.sync_status_table.model().rowCount()):
             self.sync_status_table.openPersistentEditor(
                 self.sync_status_table.model().index(row, FileSyncModelColumn.ACTION))
         self.sync_status_table.resizeColumnsToContents()
-        self.sync_actions_updated('')
+        self.update_sync_buttons()
 
         current_collection = self.get_selected_collection()
 
@@ -487,14 +511,52 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
         self.tag_settings_table.resizeColumnsToContents()
 
-    def sync_actions_updated(self, text):
-        if text == TrackSyncAction.DECIDE_INDIVIDUALLY.gui_string or TrackSyncAction.DECIDE_INDIVIDUALLY in list(
+    def update_sync_buttons(self, last_selected_action: str=None):
+        current_collection = self.get_selected_collection()
+        if current_collection is None:
+            self.compare_button.setEnabled(False)
+            self.sync_button.setEnabled(False)
+            return
+
+        if current_collection.comparing or current_collection.syncing:
+            self.compare_button.setEnabled(False)
+            self.sync_button.setEnabled(False)
+            return
+        else:
+            self.compare_button.setEnabled(True)
+
+        if not self.treeView.model().metadata_table_path:
+            self.sync_button.setEnabled(False)
+            self.sync_button.setStatusTip('You need to select a metadata table before sync can start.')
+            return
+
+        if self.sync_status_table.model() is None or self.sync_status_table.model().rowCount() == 0:
+            self.sync_button.setEnabled(False)
+            self.sync_button.setStatusTip('You need to fill the file sync table by comparing the current collection before sync can start.')
+            return
+
+        if last_selected_action == TrackSyncAction.DECIDE_INDIVIDUALLY.gui_string or TrackSyncAction.DECIDE_INDIVIDUALLY in list(
                 self.sync_status_table.model().df['action']):
             self.sync_button.setEnabled(False)
-            self.sync_button.setStatusTip('All "Decide individually" actions have to be resolved before sync can start')
+            self.sync_button.setStatusTip('All "Decide individually" actions have to be resolved before sync can start.')
         else:
             self.sync_button.setEnabled(True)
-            self.sync_button.setStatusTip('')
+            self.sync_button.setStatusTip('Execute all selected sync actions.')
+
+    def update_sync_stack(self):
+        current_collection = self.get_selected_collection()
+        if current_collection is None:
+            return
+
+        if current_collection.comparing or current_collection.syncing:
+            self.sync_progress_stack.setCurrentIndex(1)
+        else:
+            self.sync_progress_stack.setCurrentIndex(0)
+
+    def update_sync_progress(self, progress: float=0, text: str=''):
+        self.sync_progress_bar.setValue(progress * self.sync_progress_bar.maximum())
+        self.sync_progress_label.setText(text)
+
 
     def add_field(self):
         self.fields_table.model().beginInsertRows(QModelIndex(), self.fields_table.model().rowCount(),
@@ -613,8 +675,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     event.accept()
                 else:
                     event.ignore()
+                    return
             elif answer == QMessageBox.StandardButton.Cancel:
                 event.ignore()
+                return
             elif answer == QMessageBox.StandardButton.No:
                 event.accept()
 

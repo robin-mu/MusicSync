@@ -11,7 +11,7 @@ import pandas as pd
 import yt_dlp
 from yt_dlp import MetadataParserPP, YoutubeDL
 
-import musicsync.download.downloader as dl
+import musicsync.downloader as dl
 from .xml_object import XmlObject
 from .utils import classproperty
 
@@ -351,7 +351,9 @@ class Collection(XmlObject):
 
     DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
     DEFAULT_URL_NAME_FORMAT: ClassVar[str] = '%(title)s'
-    DEFAULT_EXCLUDED_YT_DLP_FIELDS: ClassVar[str] = 'formats, automatic_captions, subtitles,heatmap, protocol, http_headers, _format_sort_fields, _version'
+    DEFAULT_EXCLUDED_YT_DLP_FIELDS: ClassVar[str] = ('formats, thumbnails, automatic_captions, subtitles, heatmap, '
+                                                     'chapters, tags, protocol, http_headers, _format_sort_fields, '
+                                                     '_version')
 
     PathComponent = namedtuple('PathComponent', ['id', 'name'])
 

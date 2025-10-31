@@ -56,6 +56,9 @@ class CollectionItem(XmlObjectModelItem):
         self.auto_concat_urls = kwargs.get('auto_concat_urls', '')
         self.excluded_yt_dlp_fields = kwargs.get('excluded_yt_dlp_fields', Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS)
 
+        self.comparing: bool = False
+        self.syncing: bool = False
+
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':
         collection_item = CollectionItem(**vars(collection))
@@ -65,12 +68,16 @@ class CollectionItem(XmlObjectModelItem):
         return collection_item
 
     def to_xml_object(self) -> Collection:
+        args = vars(self).copy()
+        args.pop('comparing')
+        args.pop('syncing')
+
         children = []
         for i in range(self.rowCount()):
             child = self.child(i)
             children.append(child.to_xml_object())
 
-        return Collection(name=self.text(), urls=children, **vars(self))
+        return Collection(name=self.text(), urls=children, **args)
 
 
 class CollectionUrlItem(XmlObjectModelItem):
