@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import pandas as pd
 from PySide6 import QtCore, QtWidgets
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, QModelIndex
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, QModelIndex, QThread
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -112,6 +112,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tag_remove_button.pressed.connect(self.remove_tag)
 
         self.thread_pool = QThreadPool.globalInstance()
+
+        self.threads: list[QThread] = []
+        self.workers: list[ThreadingWorker] = []
 
         self.showMaximized()
 
@@ -414,12 +417,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         selected_collection.comparing = True
 
+        thread = QThread()
         worker = ThreadingWorker(selected_collection_xml.update_sync_status,
                                  extra={'selected_collection': selected_collection,
                                         'selected_collection_xml': selected_collection_xml})
-        worker.signals.result.connect(self.compare_finished)
-        worker.signals.progress.connect(self.update_sync_progress)
-        self.thread_pool.start(worker)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.result.connect(thread.quit)
+        worker.result.connect(worker.deleteLater)
+        worker.result.connect(self.compare_finished)
+        worker.progress.connect(self.update_sync_progress)
+        thread.finished.connect(thread.deleteLater)
+        worker.result.connect(lambda *_, w=worker: self.workers.remove(w))
+        thread.finished.connect(lambda *_, t=thread: self.threads.remove(t))
+
+        thread.start()
+
+        self.threads.append(thread)
+        self.workers.append(worker)
 
         self.update_sync_buttons()
         self.update_sync_stack()
