@@ -1,3 +1,4 @@
+import functools
 import os.path
 from copy import deepcopy
 
@@ -110,8 +111,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.tag_add_button.pressed.connect(self.add_tag)
         self.tag_remove_button.pressed.connect(self.remove_tag)
-
-        self.thread_pool = QThreadPool.globalInstance()
 
         self.threads: list[QThread] = []
         self.workers: list[ThreadingWorker] = []
@@ -233,7 +232,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return False
 
     def change_metadata_table(self, *_):
-        filename, ok = QFileDialog.getSaveFileName(self, 'Select a metadata table to associate this library with', filter='CSV files (*.csv) (*.csv)')
+        filename, ok = QFileDialog.getSaveFileName(self, 'Select a metadata table to associate this library with',
+                                                   filter='CSV files (*.csv) (*.csv)')
 
         if filename:
             if not filename.endswith('.csv'):
@@ -426,7 +426,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         worker.result.connect(thread.quit)
         worker.result.connect(worker.deleteLater)
         worker.result.connect(self.compare_finished)
-        worker.progress.connect(self.update_sync_progress)
+        worker.progress.connect(functools.partial(self.update_sync_progress, collection=selected_collection))
         thread.finished.connect(thread.deleteLater)
         worker.result.connect(lambda *_, w=worker: self.workers.remove(w))
         thread.finished.connect(lambda *_, t=thread: self.threads.remove(t))
@@ -478,8 +478,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if isinstance(error, pd.errors.DatabaseError):
                 QMessageBox.warning(self, 'Error',
                                     'Bookmark sync could not be performed because the database is locked. Close your browser and try again.')
+            elif isinstance(error, InterruptedError):
+                return
             else:
-                QMessageBox.warning(self, 'Error', 'There were errors while comparing this collection')
+                QMessageBox.warning(self, 'Error', f'There were errors while comparing this collection: {error}')
 
         selected_collection.comparing = False
         self.update_sync_buttons()
@@ -526,7 +528,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
         self.tag_settings_table.resizeColumnsToContents()
 
-    def update_sync_buttons(self, last_selected_action: str=None):
+    def update_sync_buttons(self, last_selected_action: str = None):
         current_collection = self.get_selected_collection()
         if current_collection is None:
             self.compare_button.setEnabled(False)
@@ -547,13 +549,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if self.sync_status_table.model() is None or self.sync_status_table.model().rowCount() == 0:
             self.sync_button.setEnabled(False)
-            self.sync_button.setStatusTip('You need to fill the file sync table by comparing the current collection before sync can start.')
+            self.sync_button.setStatusTip(
+                'You need to fill the file sync table by comparing the current collection before sync can start.')
             return
 
         if last_selected_action == TrackSyncAction.DECIDE_INDIVIDUALLY.gui_string or TrackSyncAction.DECIDE_INDIVIDUALLY in list(
                 self.sync_status_table.model().df['action']):
             self.sync_button.setEnabled(False)
-            self.sync_button.setStatusTip('All "Decide individually" actions have to be resolved before sync can start.')
+            self.sync_button.setStatusTip(
+                'All "Decide individually" actions have to be resolved before sync can start.')
         else:
             self.sync_button.setEnabled(True)
             self.sync_button.setStatusTip('Execute all selected sync actions.')
@@ -565,13 +569,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if current_collection.comparing or current_collection.syncing:
             self.sync_progress_stack.setCurrentIndex(1)
+            self.sync_progress_bar.setValue(current_collection.sync_progress * self.sync_progress_bar.maximum())
+            self.sync_progress_label.setText(current_collection.sync_text)
         else:
             self.sync_progress_stack.setCurrentIndex(0)
 
-    def update_sync_progress(self, progress: float=0, text: str=''):
-        self.sync_progress_bar.setValue(progress * self.sync_progress_bar.maximum())
-        self.sync_progress_label.setText(text)
-
+    def update_sync_progress(self, progress: float = 0, text: str = '', collection: CollectionItem = None):
+        collection.sync_progress = progress
+        collection.sync_text = text
+        self.update_sync_stack()
 
     def add_field(self):
         self.fields_table.model().beginInsertRows(QModelIndex(), self.fields_table.model().rowCount(),
@@ -680,6 +686,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
+
         if self.treeView.model().has_changed():
             answer = QMessageBox.question(self, 'Save Library',
                                           'The current library has not been saved yet. Do you want to save it?',
@@ -696,6 +703,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 return
             elif answer == QMessageBox.StandardButton.No:
                 event.accept()
+
+        if self.threads:
+            answer = QMessageBox.question(self, 'Running Downloads',
+                                          'There are downloads running. Do you still want to quit?',
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if answer == QMessageBox.StandardButton.No:
+                event.ignore()
+                return
+            elif answer == QMessageBox.StandardButton.Yes:
+                for thread in self.threads:
+                    thread.requestInterruption()
+                    thread.quit()
+                    thread.wait(5000)
 
 
 class TreeContextMenu(QMenu):

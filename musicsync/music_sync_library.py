@@ -457,12 +457,12 @@ class Collection(XmlObject):
             el.append(url.to_xml())
         return el
 
-    def update_sync_status(self, progress_callback: Callable | None = None) -> None | Exception:
+    def update_sync_status(self, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> None | Exception:
         self.downloader = dl.MusicSyncDownloader(self)
 
         try:
-            self.downloader.update_sync_status(progress_callback=progress_callback)
-        except pd.errors.DatabaseError as e:
+            self.downloader.update_sync_status(progress_callback=progress_callback, interruption_callback=interruption_callback)
+        except Exception as e:
             return e
 
     @staticmethod

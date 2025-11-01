@@ -58,6 +58,8 @@ class CollectionItem(XmlObjectModelItem):
 
         self.comparing: bool = False
         self.syncing: bool = False
+        self.sync_progress: float = 0
+        self.sync_text: str = ''
 
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':
@@ -71,6 +73,8 @@ class CollectionItem(XmlObjectModelItem):
         args = vars(self).copy()
         args.pop('comparing')
         args.pop('syncing')
+        args.pop('sync_progress')
+        args.pop('sync_text')
 
         children = []
         for i in range(self.rowCount()):

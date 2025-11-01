@@ -1,6 +1,6 @@
 from typing import Any
 
-from PySide6.QtCore import Signal, QRunnable, QObject, Slot
+from PySide6.QtCore import Signal, QRunnable, QObject, Slot, QThread
 
 
 class ThreadingWorker(QObject):
@@ -16,8 +16,12 @@ class ThreadingWorker(QObject):
 
     @Slot()
     def run(self):
-        result = self.func(*self.args, progress_callback=self.emit_progress, **self.kwargs)
+        result = self.func(*self.args, progress_callback=self.emit_progress, interruption_callback=self.is_interruption_requested, **self.kwargs)
         self.result.emit(result, self.extra)
 
     def emit_progress(self, progress: float=0, text: str=''):
         self.progress.emit(progress, text)
+
+    @staticmethod
+    def is_interruption_requested() -> bool:
+        return QThread.currentThread().isInterruptionRequested()

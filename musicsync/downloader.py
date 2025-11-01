@@ -11,6 +11,27 @@ from .utils import classproperty, Logger
 
 RemoteInfo = namedtuple('RemoteInfo', ['url', 'title', 'playlist_index'])
 
+class DownloadLogger:
+    logger = Logger(prefix='yt-dlp')
+
+    def __init__(self):
+        self.interruption_callback: Callable[[], bool] | None = None
+
+    def check_interruption_callback(self):
+        if self.interruption_callback is not None and self.interruption_callback():
+            raise InterruptedError
+
+    def debug(self, msg: str) -> None:
+        self.check_interruption_callback()
+        self.logger.debug(msg)
+
+    def info(self, msg: str) -> None:
+        self.check_interruption_callback()
+        self.logger.info(msg)
+
+    def warning(self, msg: str) -> None:
+        self.check_interruption_callback()
+        self.logger.warning(msg)
 
 class MusicSyncDownloader(yt_dlp.YoutubeDL):
     @classproperty
@@ -35,7 +56,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                      'key': 'FFmpegMetadata'},
                     {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
                 'compat_opts': ['no-youtube-unavailable-videos'],
-                'logger': Logger(prefix='yt-dlp')
+                'logger': DownloadLogger()
                 }
 
     def __init__(self, collection: 'lib.Collection'):
@@ -46,7 +67,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         self.partial_ie_results: dict = {}
         self.logger = Logger()
 
-    def update_sync_status(self, delete_files: bool=False, progress_callback: Callable | None = None):
+    def update_sync_status(self, delete_files: bool=False, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None):
         """
         Changes the linked collection in-place. It
         - Adds and removes collection urls if bookmark sync is enabled and the bookmark folder has changed. Files are only deleted if delete_files is true
@@ -95,15 +116,17 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                                i not in to_delete_indexes]
 
         # download track info of all collection urls
+        self.params['logger'].interruption_callback = interruption_callback
         logger.prefix = 'update_sync_status'
         for (i, coll_url) in enumerate(collection.urls):
             logger.reset_indent()
 
-            if coll_url.name:
-                progress_text = f'"{coll_url.name}" ({coll_url.url})'
-            else:
-                progress_text = f'{coll_url.url}'
-            progress_callback(i / len(collection.urls), f'Downloading info for {progress_text}')
+            if progress_callback is not None:
+                if coll_url.name:
+                    progress_text = f'"{coll_url.name}" ({coll_url.url})'
+                else:
+                    progress_text = f'{coll_url.url}'
+                progress_callback(i / len(collection.urls), f'Downloading info for {progress_text}')
 
             if coll_url.excluded:
                 logger.debug(f'{coll_url} is excluded. Skipping...')
@@ -125,7 +148,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                 remote_infos = [RemoteInfo(url=info.get('original_url') or info['webpage_url'], title=info['title'],
                                            playlist_index='')]
 
-            logger.debug(f'Processing URL {coll_url.url} ({coll_url.name}), playlist: {"yes" if coll_url.is_playlist else "No"}')
+            logger.debug(f'Processing URL {coll_url.url} ({coll_url.name})')
+            logger.debug(f'Playlist: {"yes" if coll_url.is_playlist else "no"}')
 
             self.partial_ie_results[coll_url.url] = info
 
