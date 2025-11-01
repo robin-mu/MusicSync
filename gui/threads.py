@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import Signal, QRunnable, QObject, Slot, QThread
 
@@ -7,10 +7,10 @@ class ThreadingWorker(QObject):
     progress = Signal(float, str)
     result = Signal(Any, Any)
 
-    def __init__(self, func, extra: dict | None = None, *args, **kwargs):
+    def __init__(self, func: Callable, *args, extra: dict | None=None, **kwargs):
         super(ThreadingWorker, self).__init__()
         self.func = func
-        self.extra = extra
+        self.extra = extra or dict()
         self.args = args
         self.kwargs = kwargs
 

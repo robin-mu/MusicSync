@@ -57,6 +57,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # File sync tab
         self.compare_button.pressed.connect(self.compare_collection)
+        self.sync_button.pressed.connect(self.sync_collection)
 
         self.update_sync_buttons()
 
@@ -484,6 +485,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 QMessageBox.warning(self, 'Error', f'There were errors while comparing this collection: {error}')
 
         selected_collection.comparing = False
+        self.update_sync_buttons()
+        self.update_sync_stack()
+
+    def sync_collection(self):
+        selected_collection = self.get_selected_collection()
+        selected_collection_xml = selected_collection.to_xml_object()
+
+        selected_collection.syncing = True
+
+        thread = QThread()
+        worker = ThreadingWorker(selected_collection_xml.sync,
+                                 self.sync_status_table.model().df,
+                                 extra={'selected_collection': selected_collection,
+                                        'selected_collection_xml': selected_collection_xml})
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.result.connect(thread.quit)
+        worker.result.connect(worker.deleteLater)
+        worker.result.connect(self.sync_finished)
+        worker.progress.connect(functools.partial(self.update_sync_progress, collection=selected_collection))
+        thread.finished.connect(thread.deleteLater)
+        worker.result.connect(lambda *_, w=worker: self.workers.remove(w))
+        thread.finished.connect(lambda *_, t=thread: self.threads.remove(t))
+
+        thread.start()
+
+        self.threads.append(thread)
+        self.workers.append(worker)
+
+        self.update_sync_buttons()
+        self.update_sync_stack()
+
+    def sync_finished(self, result, extra):
+        print(result, extra)
+        extra['selected_collection'].syncing = False
         self.update_sync_buttons()
         self.update_sync_stack()
 

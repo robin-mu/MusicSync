@@ -73,6 +73,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         - Adds and removes collection urls if bookmark sync is enabled and the bookmark folder has changed. Files are only deleted if delete_files is true
         - Downloads info of all collection urls
         - Updates the sync status of all tracks depending on the downloaded data
+
+        :param delete_files: If true, automatically deletes files belonging to URLs which have been removed from a bookmark-synced folder. If false, only deletes the CollectionUrl object from the collection
         """
 
         collection = self.collection
@@ -126,7 +128,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                     progress_text = f'"{coll_url.name}" ({coll_url.url})'
                 else:
                     progress_text = f'{coll_url.url}'
-                progress_callback(i / len(collection.urls), f'Downloading info for {progress_text}')
+                progress_callback(i / len(collection.urls), f'Downloading info for {progress_text} [{i + 1}/{len(collection.urls)}]')
 
             if coll_url.excluded:
                 logger.debug(f'{coll_url} is excluded. Skipping...')
@@ -194,22 +196,67 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                         local_track.status = lib.TrackSyncStatus.DOWNLOADED
                     # (Implicit) 6. PERMANENTLY_DOWNLOADED: File is present in the permanently downloaded files
 
-    def sync(self, info_df: pd.DataFrame):
+    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> pd.DataFrame:
+        """
+        Changes the linked collection in-place, depending on the given ``info_df``.
+        :param info_df: Info DataFrame. Has to contain the following columns:
+            collection_url: The CollectionUrl object
+            track: The Track object
+            action: The selected TrackSyncAction for this track
+
+        This function
+
+        - Changes the status of all tracks with an action of ``KEEP_PERMANENTLY`` to ``PERMANENTLY_DOWNLOADED``
+        - Changes the status of all tracks with an action of ``REMOVE_FROM_PERMANENTLY_DOWNLOADED`` to ``DOWNLOADED``
+        - Deletes all files and removes the ``Track`` object from the ``CollectionUrl`` for all tracks with an action of ``DELETE``
+        - Downloads all tracks with an action of ``DOWNLOAD`` and
+            - adds playlist information to the ``Track`` object
+
+        :return: A dataframe containing all not excluded metadata from all downloaded tracks.
+        """
+
+        logger = self.logger
+        logger.prefix = 'sync'
+        logger.reset_indent()
+
         # 1. KEEP_PERMANENTLY: mark files as permanently downloaded
         keep_permanently = info_df[info_df['action'] == lib.TrackSyncAction.KEEP_PERMANENTLY]
+
+        if len(keep_permanently) > 0:
+            logger.debug(f'KEEP_PERMANENTLY: {len(keep_permanently)} tracks.')
+            logger.indent()
+
         for track in keep_permanently['track']:
             track.status = lib.TrackSyncStatus.PERMANENTLY_DOWNLOADED
             track.permanently_downloaded = True
 
+            logger.debug(f'{track.url} ({track.filename}) marked as {track.status}')
+
+        logger.reset_indent()
+
         # 2. REMOVE_FROM_PERMANENTLY_DOWNLOADED: unmark as permanently downloaded
         remove_from_permanently_downloaded = info_df[
             info_df['action'] == lib.TrackSyncAction.REMOVE_FROM_PERMANENTLY_DOWNLOADED]
+
+        if len(remove_from_permanently_downloaded) > 0:
+            logger.debug(f'REMOVE_FROM_PERMANENTLY_DOWNLOADED: {len(remove_from_permanently_downloaded)} tracks.')
+            logger.indent()
+
         for track in remove_from_permanently_downloaded['track']:
             track.status = lib.TrackSyncStatus.DOWNLOADED
             track.permanently_downloaded = False
 
+            logger.debug(f'{track.url} ({track.filename}) marked as {track.status}')
+
+        logger.reset_indent()
+
         # 3. DELETE: delete files
         delete = info_df[info_df['action'] == lib.TrackSyncAction.DELETE]
+
+        if len(delete) > 0:
+            logger.info(f'DELETE: {len(delete)} tracks.')
+            logger.indent()
+
         for row in delete[['track', 'collection_url']].itertuples():
             track: lib.Track = row.track
             url: lib.CollectionUrl = row.collection_url
@@ -217,13 +264,28 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
             if os.path.isfile(path):
                 os.remove(path)
+                logger.info(f'Deleting {track.filename} ({track.url})')
+            else:
+                logger.info(f'Could not delete file {track.filename} ({track.url}) because it does not exist')
+
             url.tracks.pop(track.url)
 
-        # 4. DOWNLOAD
-        download = info_df[info_df['action'] == lib.TrackSyncAction.DOWNLOAD]
+        logger.reset_indent()
 
-        for row in download[['track', 'collection_url']].itertuples():
-            pass
+        # 4. REDOWNLOAD_METADATA and DOWNLOAD
+        download = info_df[(info_df['action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA) | (info_df['action'] == lib.TrackSyncAction.DOWNLOAD)]
+
+        if len(download) > 0:
+            logger.debug(f'DOWNLOAD or REDOWNLOAD_METADATA: {len(download)} tracks.')
+            logger.indent()
+
+        groupby_url = download.groupby('collection_url')
+
+        for url in groupby_url.groups:
+            entries = groupby_url.get_group(url)
+            playlist_indices = entries.apply(lambda row: row['track'].playlist_index, axis=1).tolist()
+
+            print(entries)
 
         # 5. DO_NOTHING and DECIDE_INDIVIDUALLY are ignored
 

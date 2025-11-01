@@ -465,6 +465,15 @@ class Collection(XmlObject):
         except Exception as e:
             return e
 
+    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> None | Exception:
+        if self.downloader is None:
+            self.downloader = dl.MusicSyncDownloader(self)
+
+        try:
+            self.downloader.sync(info_df, progress_callback=progress_callback, interruption_callback=interruption_callback)
+        except Exception as e:
+            return e
+
     @staticmethod
     def get_real_path(collection: 'Collection | CollectionItem', url: 'CollectionUrl | CollectionUrlItem', track: 'Track | None'=None):
         folder = collection.folder_path
@@ -486,7 +495,7 @@ class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
         return [], info
 
 
-@dataclass
+@dataclass(eq=True, order=True)
 class CollectionUrl(XmlObject):
     url: str
     name: str = ''
@@ -526,6 +535,9 @@ class CollectionUrl(XmlObject):
         for track in self.tracks.values():
             el.append(track.to_xml())
         return el
+
+    def __hash__(self):
+        return hash(id(self))
 
 
 class MetadataStatus(StrEnum):
