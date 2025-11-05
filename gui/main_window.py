@@ -456,14 +456,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     rows_to_be_removed.append(i)
 
-                    folder = Collection.get_real_path(selected_collection, item)
+                    folder = selected_collection.get_real_path(item)
                     delete = QMessageBox.question(self,
                                                   'Delete files',
                                                   f'The URL {item.text()} has been deleted from the bookmark folder. Do you want to delete the corresponding files located at {folder}?',
                                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                     if delete == QMessageBox.StandardButton.Yes:
                         for track in item.tracks.values():
-                            path = Collection.get_real_path(selected_collection, item, track)
+                            path = selected_collection.get_real_path(item, track)
                             if os.path.isfile(path):
                                 os.remove(path)
 

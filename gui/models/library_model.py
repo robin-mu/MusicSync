@@ -1,3 +1,5 @@
+import os
+import re
 import typing
 from copy import deepcopy
 from xml.etree.ElementTree import Element
@@ -82,6 +84,19 @@ class CollectionItem(XmlObjectModelItem):
             children.append(child.to_xml_object())
 
         return Collection(name=self.text(), urls=children, **args)
+
+
+    def get_real_path(self, url: 'CollectionUrlItem', track: 'Track | None'=None):
+        folder = self.folder_path
+        if self.save_playlists_to_subfolders and url.is_playlist:
+            folder = os.path.join(folder, url.text())
+        if track is None:
+            return folder
+        return os.path.join(folder, track.filename)
+
+
+    def in_auto_concat(self, url: str) -> bool:
+        return self.to_xml_object().in_auto_concat(url)
 
 
 class CollectionUrlItem(XmlObjectModelItem):
@@ -219,6 +234,7 @@ class LibraryModel(XmlObjectModel):
         if tracks is None:
             tracks = {}
 
-        new_url = CollectionUrlItem(url=url, name=name, tracks=tracks)
+        new_url = CollectionUrlItem(url=url, name=name, tracks=tracks,
+                                    concat=parent.in_auto_concat(url))
         parent.appendRow(new_url)
         return new_url

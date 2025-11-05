@@ -1,4 +1,5 @@
 import os
+import re
 import xml.etree.ElementTree as et
 from collections import namedtuple
 from dataclasses import dataclass, field
@@ -469,19 +470,32 @@ class Collection(XmlObject):
         if self.downloader is None:
             self.downloader = dl.MusicSyncDownloader(self)
 
-        try:
-            self.downloader.sync(info_df, progress_callback=progress_callback, interruption_callback=interruption_callback)
-        except Exception as e:
-            return e
+        # try:
+        self.downloader.sync(info_df, progress_callback=progress_callback, interruption_callback=interruption_callback)
+        # except Exception as e:
+        #     return e
 
-    @staticmethod
-    def get_real_path(collection: 'Collection | CollectionItem', url: 'CollectionUrl | CollectionUrlItem', track: 'Track | None'=None):
-        folder = collection.folder_path
-        if collection.save_playlists_to_subfolders and url.is_playlist:
+    def get_real_path(self, url: 'CollectionUrl', track: 'Track | None'=None):
+        folder = self.folder_path
+        if self.save_playlists_to_subfolders and url.is_playlist:
             folder = os.path.join(folder, url.name)
         if track is None:
             return folder
         return os.path.join(folder, track.filename)
+
+    def in_auto_concat(self, url: str) -> bool:
+        patterns = re.split(r'(?<!\\),', self.auto_concat_urls)
+        for pattern in patterns:
+            pattern = pattern.replace(r'\,', ',')
+            if pattern.startswith('re:') and re.match(pattern[3:], url) is not None:
+                return True
+            else:
+                if url == pattern:
+                    return True
+
+        return False
+
+
 
 
 class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
@@ -542,6 +556,7 @@ class CollectionUrl(XmlObject):
 
 class MetadataStatus(StrEnum):
     NEW = auto(), 'New'
+    REDOWNLOADED = auto(), 'Metadata redownloaded'
     AUTOMATICALLY = auto(), 'Selected automatically'
     MANUALLY = auto(), 'Selected manually'
 

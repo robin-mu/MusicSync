@@ -1,5 +1,7 @@
 import os.path
 from collections import namedtuple
+from functools import partial
+from pprint import pprint
 from typing import Callable, Any
 
 import pandas as pd
@@ -10,6 +12,7 @@ from .bookmark_library import BookmarkLibrary
 from .utils import classproperty, Logger
 
 RemoteInfo = namedtuple('RemoteInfo', ['url', 'title', 'playlist_index'])
+
 
 class DownloadLogger:
     logger = Logger(prefix='yt-dlp')
@@ -33,12 +36,16 @@ class DownloadLogger:
         self.check_interruption_callback()
         self.logger.warning(msg)
 
+
 class MusicSyncDownloader(yt_dlp.YoutubeDL):
     @classproperty
     def DEFAULT_OPTIONS(self) -> dict[str, Any]:
         return {'final_ext': 'mp3',
                 'format': 'ba[acodec^=mp3]/ba/b',
-                'outtmpl': {'pl_thumbnail': ''},
+                'outtmpl': {
+                    'default': '%(extractor)s_%(playlist_id)s_%(id)s.%(ext)s',
+                    'pl_video': '%(playlist_index)s_%(extractor)s_%(playlist_id)s_%(id)s.%(ext)s',
+                },
                 'writethumbnail': True,
                 'postprocessors': [
                     {'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
@@ -61,13 +68,24 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
     def __init__(self, collection: 'lib.Collection'):
         params = self.DEFAULT_OPTIONS
+        params.update({
+            'paths': {
+                'home': os.path.realpath(collection.folder_path),
+            }
+        })
+
+        if collection.save_playlists_to_subfolders:
+            params['paths']['pl_video'] = f'{os.path.realpath(collection.folder_path)}/%(__musicsync_url_name)s'
+
         super(MusicSyncDownloader, self).__init__(params=params)
 
         self.collection: lib.Collection = collection
         self.partial_ie_results: dict = {}
         self.logger = Logger()
 
-    def update_sync_status(self, delete_files: bool=False, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None):
+    def update_sync_status(self, delete_files: bool = False,
+                           progress_callback: Callable[[float, str], None] | None = None,
+                           interruption_callback: Callable[[], bool] | None = None):
         """
         Changes the linked collection in-place. It
         - Adds and removes collection urls if bookmark sync is enabled and the bookmark folder has changed. Files are only deleted if delete_files is true
@@ -89,22 +107,25 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                 if child.url not in collection_urls:
                     logger.debug(f'URL {child.url} ({child.bookmark_title}) added to collection "{collection.name}"')
                     collection.urls.append(lib.CollectionUrl(url=child.url,
-                                                         name=child.bookmark_title if collection.sync_bookmark_title_as_url_name else ''))
+                                                             name=child.bookmark_title if collection.sync_bookmark_title_as_url_name else '',
+                                                             concat=collection.in_auto_concat(child.url)))
 
             bookmark_urls = [b.url for b in folder.values()]
             to_delete_indexes = []
             for i, collection_url in enumerate(collection.urls):
                 if collection_url.url not in bookmark_urls:
-                    logger.debug(f'URL {collection_url.url} ({collection_url.name}) removed from collection "{collection.name}"')
+                    logger.debug(
+                        f'URL {collection_url.url} ({collection_url.name}) removed from collection "{collection.name}"')
                     to_delete_indexes.append(i)
 
                     if delete_files:
                         if collection_url.is_playlist is None:
-                            logger.debug(f'Removed URL {collection_url.url} has never been synced, so no files can be deleted.')
+                            logger.debug(
+                                f'Removed URL {collection_url.url} has never been synced, so no files can be deleted.')
                             continue
-                        folder = lib.Collection.get_real_path(self.collection, collection_url)
+                        folder = self.collection.get_real_path(collection_url)
                         for track in collection_url.tracks.values():
-                            filename = lib.Collection.get_real_path(self.collection, collection_url, track)
+                            filename = self.collection.get_real_path(collection_url, track)
                             logger.info(f'Deleting file {filename}.')
                             if os.path.isfile(filename):
                                 os.remove(filename)
@@ -128,16 +149,20 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                     progress_text = f'"{coll_url.name}" ({coll_url.url})'
                 else:
                     progress_text = f'{coll_url.url}'
-                progress_callback(i / len(collection.urls), f'Downloading info for {progress_text} [{i + 1}/{len(collection.urls)}]')
+                progress_callback(i / len(collection.urls),
+                                  f'Downloading info for {progress_text} [{i + 1}/{len(collection.urls)}]')
 
             if coll_url.excluded:
                 logger.debug(f'{coll_url} is excluded. Skipping...')
                 continue
 
+            coll_url.concat = self.collection.in_auto_concat(coll_url.url)
+
             info = self.extract_info(coll_url.url, process=False)
             if not coll_url.name:
-                coll_url.name = self.evaluate_outtmpl(collection.url_name_format or lib.Collection.DEFAULT_URL_NAME_FORMAT,
-                                                      info)
+                coll_url.name = self.evaluate_outtmpl(
+                    collection.url_name_format or lib.Collection.DEFAULT_URL_NAME_FORMAT,
+                    info)
 
             is_playlist = info.get('_type') == 'playlist'
             coll_url.is_playlist = is_playlist
@@ -155,7 +180,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
             self.partial_ie_results[coll_url.url] = info
 
-            url_folder = lib.Collection.get_real_path(self.collection, coll_url)
+            url_folder = self.collection.get_real_path(coll_url)
             url_folder_contents = os.listdir(url_folder) if os.path.isdir(url_folder) else []
 
             logger.debug(f'Folder: {url_folder}')
@@ -171,7 +196,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                         # 2. LOCAL_FILE: File is not in the permanently downloaded files, and does not correspond to a source track
                         local_track.status = lib.TrackSyncStatus.LOCAL_FILE
 
-                    logger.debug(f'{local_track.url} ({local_track.filename}): Not in URL tracks and marked as {local_track.status}')
+                    logger.debug(
+                        f'{local_track.url} ({local_track.filename}): Not in URL tracks and marked as {local_track.status}')
 
             for remote_track_url, remote_title, remote_playlist_index in remote_infos:
                 # 3. ADDED_TO_SOURCE: Track is present in source, but was not present in previous sync
@@ -179,15 +205,16 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                     logger.debug(f'{remote_track_url} ({remote_title}): {lib.TrackSyncStatus.ADDED_TO_SOURCE}.')
 
                     coll_url.tracks[remote_track_url] = lib.Track(url=remote_track_url,
-                                                            status=lib.TrackSyncStatus.ADDED_TO_SOURCE,
-                                                            title=remote_title,
-                                                            filename='',
-                                                            playlist_index=remote_playlist_index)
+                                                                  status=lib.TrackSyncStatus.ADDED_TO_SOURCE,
+                                                                  title=remote_title,
+                                                                  filename='',
+                                                                  playlist_index=remote_playlist_index)
                 else:
                     local_track: lib.Track = coll_url.tracks[remote_track_url]
                     if local_track.filename not in url_folder_contents:
                         # 4. NOT_DOWNLOADED: Track is present in source, was also present in previous sync, but corresponding file does not exist
-                        logger.debug(f'{remote_track_url} ({remote_title}): File {local_track.filename} does not exist. Marked as {lib.TrackSyncStatus.NOT_DOWNLOADED}')
+                        logger.debug(
+                            f'{remote_track_url} ({remote_title}): File {local_track.filename} does not exist. Marked as {lib.TrackSyncStatus.NOT_DOWNLOADED}')
 
                         local_track.status = lib.TrackSyncStatus.NOT_DOWNLOADED
                     elif local_track.status != lib.TrackSyncStatus.PERMANENTLY_DOWNLOADED:
@@ -196,7 +223,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                         local_track.status = lib.TrackSyncStatus.DOWNLOADED
                     # (Implicit) 6. PERMANENTLY_DOWNLOADED: File is present in the permanently downloaded files
 
-    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> pd.DataFrame:
+    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None = None,
+             interruption_callback: Callable[[], bool] | None = None) -> pd.DataFrame:
         """
         Changes the linked collection in-place, depending on the given ``info_df``.
         :param info_df: Info DataFrame. Has to contain the following columns:
@@ -260,7 +288,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         for row in delete[['track', 'collection_url']].itertuples():
             track: lib.Track = row.track
             url: lib.CollectionUrl = row.collection_url
-            path = lib.Collection.get_real_path(self.collection, url, track)
+            path = self.collection.get_real_path(url, track)
 
             if os.path.isfile(path):
                 os.remove(path)
@@ -273,7 +301,11 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         logger.reset_indent()
 
         # 4. REDOWNLOAD_METADATA and DOWNLOAD
-        download = info_df[(info_df['action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA) | (info_df['action'] == lib.TrackSyncAction.DOWNLOAD)]
+        def filter_redownloaded(info_dict, url: lib.CollectionUrl, entries_df: pd.DataFrame, metadata_df: pd.DataFrame) -> str | None:
+            pprint(info_dict)
+
+        download = info_df[(info_df['action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA) | (
+                    info_df['action'] == lib.TrackSyncAction.DOWNLOAD)]
 
         if len(download) > 0:
             logger.debug(f'DOWNLOAD or REDOWNLOAD_METADATA: {len(download)} tracks.')
@@ -281,11 +313,25 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
         groupby_url = download.groupby('collection_url')
 
+        metadata_df = pd.DataFrame()
         for url in groupby_url.groups:
-            entries = groupby_url.get_group(url)
-            playlist_indices = entries.apply(lambda row: row['track'].playlist_index, axis=1).tolist()
+            group = groupby_url.get_group(url)
+            entries = pd.DataFrame({'track': group['track'], 'action': group['action']})
+            entries.index = pd.Index(group['track'].apply(lambda t: t.playlist_index), name='playlist_index')
 
-            print(entries)
+            if url.is_playlist:
+                self.params['playlist_items'] = ','.join(entries.index.tolist())
+
+            self.params['match_filter'] = partial(filter_redownloaded, url=url, entries_df=entries, metadata_df=metadata_df)
+
+            if url.url in self.partial_ie_results:
+                info = self.process_ie_result(self.partial_ie_results[url.url])
+                self.partial_ie_results.pop(url.url)
+            else:
+                info = self.extract_info(url.url)
+
+
+
 
         # 5. DO_NOTHING and DECIDE_INDIVIDUALLY are ignored
 

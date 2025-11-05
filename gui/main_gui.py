@@ -714,7 +714,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuEdit.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(5)
+        self.tabWidget.setCurrentIndex(3)
         self.sync_stack.setCurrentIndex(1)
         self.sync_progress_stack.setCurrentIndex(0)
         self.metadata_stack.setCurrentIndex(1)
@@ -760,7 +760,7 @@ class Ui_MainWindow(object):
         self.label_13.setStatusTip(_translate("MainWindow", "If a URL is excluded, its contents will not be compared with your local files when syncing."))
         self.label_13.setText(_translate("MainWindow", "Automatically exclude URLs \n"
 "after first download"))
-        self.label_20.setStatusTip(_translate("MainWindow", "A comma-separated list of URLs (regex supported) whose videos will be automatically concatenated into one file. A literal comma has to be escaped like \\,"))
+        self.label_20.setStatusTip(_translate("MainWindow", "A comma-separated list of either URLs or regular expressions (indicated by prefixing the expression with \"re:\") whose videos will be automatically concatenated into one file. A literal comma has to be escaped like \\,"))
         self.label_20.setText(_translate("MainWindow", "Automatically concatenate \n"
 "videos for these URLs"))
         self.label_25.setStatusTip(_translate("MainWindow", "Comma-separated list of yt-dlp info-dict fields which are not saved in the metadata table. They are still saved temporarily so that they can be accessed in metadata selection right after downloading, but are deleted when MusicSync is closed."))
