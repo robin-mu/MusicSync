@@ -148,6 +148,83 @@ In this table, you can select the tags that should be added to downloaded files 
 - **Format**: [Format string](#formatting) to generate the tag from.
 
 #### Supported file tags depending on file format
+| Tag                  | ID3 (mp3, aiff, tta, wav) | QuickTime (mp4, m4a, m4b, mov, 3gp, 3g2, m4v) | Vorbis Comment (ogg, flac, opus, spx, ogv) |
+|----------------------|---------------------------|-----------------------------------------------|--------------------------------------------|
+| album                | TALB                      | ©alb                                          | album                                      |
+| album_artist         | TPE2                      | aART                                          | albumartist                                |
+| album_artist_sort    | TSO2                      | soaa                                          | albumartistsort                            |
+| album_sort           | TSOA                      | soal                                          | albumsort                                  |
+| arranger             | TPE4                      |                                               |                                            |
+| artist               | TPE1                      | ©ART                                          | artist                                     |
+| artist_sort          | TSOP                      | soar                                          | artistsort                                 |
+| author               | TOLY                      |                                               |                                            |
+| category             | TCAT                      | catg                                          |                                            |
+| chapter              | CHAP                      |                                               |                                            |
+| comment              | COMM                      | ©cmt, ©des                                    | description                                |
+| composer             | TCOM                      | ©wrt, ©com                                    | composer                                   |
+| composer_sort        | TSOC                      | soco                                          | composersort                               |
+| copyright            | TCOP                      | ©cpy, cprt                                    | copyright                                  |
+| creation_time        | TDEN                      |                                               |                                            |
+| date                 | TDRC                      | ©day                                          | date                                       |
+| description          | TDES                      | desc                                          |                                            |
+| director             |                           | ©dir                                          | director                                   |
+| disc                 | TPOS                      | disk                                          | discnumber                                 |
+| discsubtitle         | TSST                      |                                               |                                            |
+| encoded_by           | TENC                      |                                               | encodedby                                  |
+| episode_id           |                           | tven                                          |                                            |
+| episode_sort         |                           | tves                                          |                                            |
+| episode_uid          |                           |                                               |                                            |
+| genre                | TCON                      | ©gen                                          | genre                                      |
+| grouping             | TIT1                      | ©grp                                          | _releasegroup                              |
+| hd_video             |                           | hdvd                                          |                                            |
+| is_compilation       | TCMP                      | cpil                                          | compilation                                |
+| is_gapless           |                           | pgap                                          | gapless                                    |
+| is_podcast           | PCST                      | pcst                                          | podcast                                    |
+| isrc                 | TSRC                      |                                               |                                            |
+| key                  |                           |                                               | key                                        |
+| keywords             | TKWD                      | ©key, keyw                                    |                                            |
+| language             | TLAN                      |                                               | language                                   |
+| length               | TLEN                      |                                               | _length                                    |
+| lyricist             | TEXT                      |                                               | lyricist                                   |
+| lyrics               | SYLT/USLT                 | ©lyr                                          | lyrics                                     |
+| media_type           | TMED                      | stik                                          | media                                      |
+| mood                 | TMOO                      |                                               |                                            |
+| movement             | MVNM                      | ©mvn                                          | movement                                   |
+| movement_count       |                           | ©mvc                                          | movementtotal                              |
+| movement_index       | MVIN                      | ©mvi                                          | movementnumber                             |
+| network              |                           | tvnn                                          |                                            |
+| originaldate         | TDOR                      |                                               |                                            |
+| performer            | TPE3                      | ©con                                          | originalartist                             |
+| performer:*          | TMCL                      |                                               |                                            |
+| podcast_episode_guid |                           | egit                                          |                                            |
+| podcast_url          |                           | purl                                          |                                            |
+| produced             | TPRO                      |                                               |                                            |
+| producer             |                           | ©prd                                          | producer                                   |
+| publisher            | TPUB                      |                                               |                                            |
+| rating               | POPM                      | rtng                                          | _rating                                    |
+| season_number        |                           | tvsn                                          |                                            |
+| show                 |                           | tvsh                                          | show                                       |
+| show_work_movement   |                           | shwm                                          |                                            |
+| show_sort            |                           | sosn                                          |                                            |
+| subtitle             | TIT3                      | ©st3                                          | subtitle                                   |
+| synopsis             |                           | ldes                                          |                                            |
+| table_of_contents    | CTOC                      |                                               |                                            |
+| TBPM                 | TBPM                      |                                               |                                            |
+| tempo                | TBPM                      | tmpo                                          | bpm                                        |
+| thumbnail            | APIC                      | covr                                          |                                            |
+| time                 | TIME                      |                                               |                                            |
+| TIT1                 | TIT1                      |                                               |                                            |
+| TIT3                 | TIT3                      |                                               |                                            |
+| title                | TIT2                      | ©nam                                          |                                            |
+| title_sort           | TSOT                      | sonm                                          | titlesort                                  |
+| TKEY                 | TKEY                      |                                               |                                            |
+| track                | TRCK                      | ©trk, trkn                                    | tracknumber                                |
+| URL                  | WPUB                      | ©url                                          |                                            |
+| website              | WOAR                      |                                               |                                            |
+| work                 |                           | ©wrk                                          | work                                       |
+| year                 | TORY                      | ©day                                          | originalyear                               |
+| location             |                           | ©xyz, loci                                    |                                            |
+
 
 
 ## Plugins

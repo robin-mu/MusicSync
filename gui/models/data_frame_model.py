@@ -12,7 +12,7 @@ class DataFrameTableModel(QAbstractTableModel):
 
     def internal_columns(self) -> int:
         """
-        If this method returns n, the last n column will be considered internal and will not be displayed
+        If this method returns n, the last n columns will be considered internal and will not be displayed
         """
         return 0
 
