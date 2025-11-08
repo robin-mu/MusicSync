@@ -353,8 +353,8 @@ class Collection(XmlObject):
     DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
     DEFAULT_URL_NAME_FORMAT: ClassVar[str] = '%(title)s'
     DEFAULT_EXCLUDED_YT_DLP_FIELDS: ClassVar[str] = ('formats, thumbnails, automatic_captions, subtitles, heatmap, '
-                                                     'chapters, tags, protocol, http_headers, _format_sort_fields, '
-                                                     '_version')
+                                                     'chapters, entries, tags, protocol, http_headers, '
+                                                     '_format_sort_fields, _version')
 
     PathComponent = namedtuple('PathComponent', ['id', 'name'])
 
