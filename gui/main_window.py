@@ -84,28 +84,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Metadata suggestions tab
         # Metadata fields table
-        self.fields_table.setModel(MetadataFieldsModel())
+        #self.fields_table.setModel(MetadataFieldsModel())
 
         self.field_add_button.pressed.connect(self.add_field)
         self.field_remove_button.pressed.connect(self.remove_field)
 
         # metadata suggestions table
-        self.suggestions_table.setModel(MetadataSuggestionsModel())
-        self.suggestions_table.setStyle(MetadataSuggestionsTableStyle())
-        self.suggestions_table.horizontalHeader().setMouseTracking(True)
-        self.suggestions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
-        self.suggestions_table.horizontalHeader().installEventFilter(self)
-        self.installEventFilter(self)
-        self.suggestions_table.resizeColumnsToContents()
+        #self.suggestions_table.setModel(MetadataSuggestionsModel())
+        # self.suggestions_table.horizontalHeader().setMouseTracking(True)
+        # self.suggesstions_table.setStyle(MetadataSuggestionsTableStyle())
+        # self.suggetions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
+        # self.suggestions_table.horizontalHeader().installEventFilter(self)
+        # self.installEventFilter(self)
+        # self.suggestions_table.resizeColumnsToContents()
 
-        self.suggestions_add_button.pressed.connect(self.add_suggestion)
-        self.suggestions_remove_button.pressed.connect(self.remove_suggestion)
+        # self.suggestions_add_button.pressed.connect(self.add_suggestion)
+        # self.suggestions_remove_button.pressed.connect(self.remove_suggestion)
 
         # external metadata tables table
-        self.external_tables_table.setModel(ExternalMetadataTablesModel())
-
-        self.external_table_add_button.pressed.connect(self.add_external_table)
-        self.external_table_remove_button.pressed.connect(self.remove_external_table)
+        # self.external_tables_table.setModel(ExternalMetadataTablesModel())
+        #
+        # self.external_table_add_button.pressed.connect(self.add_external_table)
+        # self.external_table_remove_button.pressed.connect(self.remove_external_table)
 
         # file tags table
         self.tag_settings_table.setModel(FileTagsModel())
@@ -169,9 +169,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                      QEvent.Type.HoverLeave,
                                      QEvent.Type.MouseMove, QEvent.Type.HoverMove)
 
-        if obj is self.suggestions_table.horizontalHeader() and et in suggestions_header_events or obj is self and et in (
-                QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
-            update_cursor()
+        # if obj is self.suggestions_table.horizontalHeader() and et in suggestions_header_events or obj is self and et in (
+        #         QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+        #     update_cursor()
 
         return super(MainWindow, self).eventFilter(obj, event)
 
@@ -272,7 +272,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_subfolder.setChecked(selected_collection.save_playlists_to_subfolders)
             self.settings_url_name_format.setText(selected_collection.url_name_format)
             self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
-            self.settings_auto_concat_urls.setText(selected_collection.auto_concat_urls)
+            self.settings_auto_concat_urls.setPlainText(selected_collection.auto_concat_urls)
             self.settings_excluded_yt_dlp_fields.setText(selected_collection.excluded_yt_dlp_fields)
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file,
@@ -316,7 +316,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
         item.url_name_format = self.settings_url_name_format.text()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
-        item.auto_concat_urls = self.settings_auto_concat_urls.text()
+        item.auto_concat_urls = self.settings_auto_concat_urls.toPlainText()
         item.excluded_yt_dlp_fields = self.settings_excluded_yt_dlp_fields.text()
 
         item.sync_actions = {
@@ -334,9 +334,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        item.metadata_suggestions = deepcopy(self.fields_table.model().fields)
+        #item.metadata_suggestions = deepcopy(self.fields_table.model().fields)
         item.file_tags = deepcopy(self.tag_settings_table.model().tags)
-        self.treeView.model().external_metadata_tables = self.external_tables_table.model().tables[1:]
+        # self.treeView.model().external_metadata_tables = self.external_tables_table.model().tables[1:]
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -536,29 +536,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
 
         # Metadata fields table
-        self.fields_table.setModel(MetadataFieldsModel(deepcopy(current_collection.metadata_suggestions), parent=self))
-        for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.TIMED_DATA,
-                    MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE,
-                    MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
-            self.fields_table.setItemDelegateForColumn(col, CheckboxDelegate(self))
-
-            for row in range(self.fields_table.model().rowCount()):
-                self.fields_table.openPersistentEditor(self.fields_table.model().index(row, col))
-
-        self.fields_table.sortByColumn(MetadataFieldsTableColumn.ENABLED, QtCore.Qt.SortOrder.AscendingOrder)
-        self.fields_table.resizeColumnsToContents()
-
-        self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
-
-        self.suggestions_table.setModel(MetadataSuggestionsModel())
+        # self.fields_table.setModel(MetadataFieldsModel(deepcopy(current_collection.metadata_suggestions), parent=self))
+        # for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.TIMED_DATA,
+        #             MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE,
+        #             MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
+        #     self.fields_table.setItemDelegateForColumn(col, CheckboxDelegate(self))
+        #
+        #     for row in range(self.fields_table.model().rowCount()):
+        #         self.fields_table.openPersistentEditor(self.fields_table.model().index(row, col))
+        #
+        # self.fields_table.sortByColumn(MetadataFieldsTableColumn.ENABLED, QtCore.Qt.SortOrder.AscendingOrder)
+        # self.fields_table.resizeColumnsToContents()
+        #
+        # self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
+        #
+        # self.suggestions_table.setModel(MetadataSuggestionsModel())
 
         # external tables
-        external_metadata_tables = ([ExternalMetadataTable(id=0,
-                                                           name='Table of this library',
-                                                           path=self.treeView.model().metadata_table_path)] +
-                                    deepcopy(self.treeView.model().external_metadata_tables))
-        self.external_tables_table.setModel(ExternalMetadataTablesModel(external_metadata_tables, parent=self))
-        self.external_tables_table.resizeColumnsToContents()
+        # external_metadata_tables = ([ExternalMetadataTable(id=0,
+        #                                                    name='Table of this library',
+        #                                                    path=self.treeView.model().metadata_table_path)] +
+        #                             deepcopy(self.treeView.model().external_metadata_tables))
+        # self.external_tables_table.setModel(ExternalMetadataTablesModel(external_metadata_tables, parent=self))
+        # self.external_tables_table.resizeColumnsToContents()
 
         # file tags
         self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
@@ -604,11 +604,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
 
         if current_collection.comparing or current_collection.syncing:
-            self.sync_progress_stack.setCurrentIndex(1)
+            # self.sync_progress_stack.setCurrentIndex(1)
             self.sync_progress_bar.setValue(current_collection.sync_progress * self.sync_progress_bar.maximum())
             self.sync_progress_label.setText(current_collection.sync_text)
-        else:
-            self.sync_progress_stack.setCurrentIndex(0)
+        # else:
+        #     self.sync_progress_stack.setCurrentIndex(0)
 
     def update_sync_progress(self, progress: float = 0, text: str = '', collection: CollectionItem = None):
         collection.sync_progress = progress
