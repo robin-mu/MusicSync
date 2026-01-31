@@ -46,11 +46,9 @@ from functools import reduce
 import operator
 import re
 
-from musicsync.scripting.const import (
+from musicsync.scripting.util import (
     RELEASE_COUNTRIES,
     MULTI_VALUED_JOINER,
-)
-from musicsync.scripting.util import (
     N_,
     gettext_countries,
     pattern_as_regex,

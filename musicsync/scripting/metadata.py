@@ -46,7 +46,7 @@ from collections.abc import (
     MutableMapping,
 )
 
-from musicsync.scripting.const import MULTI_VALUED_JOINER
+from musicsync.scripting.util import MULTI_VALUED_JOINER
 
 
 class Metadata(MutableMapping[str, str | list[str] | None]):

@@ -51,11 +51,11 @@ try:
 except ImportError:
     markdown = None
 
-from musicsync.scripting.const import (
+from musicsync.scripting.util import (
     PLUGIN_MODULE_PREFIX,
     PLUGIN_MODULE_PREFIX_LEN,
+    gettext as _
 )
-from musicsync.scripting.util import gettext as _
 
 _extension_points = []
 _plugin_uuid_to_module = {}  # Maps UUID -> module name for v3 plugins

@@ -41,7 +41,7 @@
 from collections.abc import MutableSequence
 from queue import LifoQueue
 
-from musicsync.scripting.const import MULTI_VALUED_JOINER
+from musicsync.scripting.util import MULTI_VALUED_JOINER
 from musicsync.scripting.metadata import Metadata
 
 from musicsync.scripting import script_functions
@@ -127,6 +127,8 @@ def normalize_tagname(name):
 
 
 class ScriptVariable:
+    # TODO change this so a ScriptVariable doesn't have a name, but instead a yt-dlp-conform variable query that can be evaluated
+    # with the respective yt-dlp function (evaluate_outtmpl in YoutubeDL)
     def __init__(self, name):
         self.name = name
 
@@ -290,7 +292,7 @@ class ScriptParser:
         begin = self._pos
         while True:
             ch = self.read()
-            if ch == '%':
+            if ch == '%':  # TODO end of variable is a percent in picard, change this to the yt-dlp syntax, i.e. closing parenthesis + any text + one character of diouxXeEfFgGcrsaBjhlqDSU
                 return ScriptVariable(self._text[begin : self._pos - 1])
             elif ch is None:
                 self.__raise_eof()
