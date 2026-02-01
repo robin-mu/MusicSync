@@ -41,10 +41,13 @@
 from collections.abc import MutableSequence
 from queue import LifoQueue
 
+from yt_dlp.utils import STR_FORMAT_TYPES
+
 from musicsync.scripting.util import MULTI_VALUED_JOINER
 from musicsync.scripting.metadata import Metadata
 
 from musicsync.scripting import script_functions
+from scripting.outtmpl import evaluate_outtmpl
 
 
 # if TYPE_CHECKING:
@@ -127,16 +130,15 @@ def normalize_tagname(name):
 
 
 class ScriptVariable:
-    # TODO change this so a ScriptVariable doesn't have a name, but instead a yt-dlp-conform variable query that can be evaluated
-    # with the respective yt-dlp function (evaluate_outtmpl in YoutubeDL)
     def __init__(self, name):
-        self.name = name
+        self.name = '%' + name
 
     def __repr__(self):
-        return "<ScriptVariable %%%s%%>" % self.name
+        return "<ScriptVariable %s>" % self.name
 
     def eval(self, state):
-        return state.context.get(normalize_tagname(self.name), "")
+        # return state.context.get(normalize_tagname(self.name), "")
+        return evaluate_outtmpl(self.name, state.context)
 
 
 class ScriptFunction:
@@ -290,14 +292,23 @@ class ScriptParser:
 
     def parse_variable(self):
         begin = self._pos
+        ch = self.read()
+        if not ch == '(':
+            self.__raise_char(ch)
+
+        in_query = True
         while True:
             ch = self.read()
-            if ch == '%':  # TODO end of variable is a percent in picard, change this to the yt-dlp syntax, i.e. closing parenthesis + any text + one character of diouxXeEfFgGcrsaBjhlqDSU
-                return ScriptVariable(self._text[begin : self._pos - 1])
+            if ch == ')':
+                in_query = False
+            elif not in_query and ch in STR_FORMAT_TYPES + 'BjhlqDSU':
+                return ScriptVariable(self._text[begin : self._pos])
             elif ch is None:
                 self.__raise_eof()
-            elif not isidentif(ch) and ch != ':':
-                self.__raise_char(ch)
+            # yt-dlp allows a replacement value specified in the str.format mini-language, where any character can be
+            # used as fill, so there are no invalid characters
+            # elif not isidentif(ch) and ch not in '.:,{}#+-*>%&|':
+            #     self.__raise_char(ch)
 
     def parse_text(self, top):
         text = []
@@ -312,6 +323,8 @@ class ScriptParser:
             elif ch in '$%' or (not top and ch in ',)'):
                 self.unread()
                 break
+            elif ch == '#':
+                self.parse_comment()
             else:
                 text.append(ch)
         return ScriptText("".join(text))
@@ -354,6 +367,12 @@ class ScriptParser:
                 self.unread()
                 tokens.append(self.parse_text(top))
         return (tokens, ch)
+
+    def parse_comment(self):
+        ch = self.read()
+        while ch != '\n':
+            ch = self.read()
+        self.unread()
 
     def load_functions(self):
         self.functions = dict(script_functions.ext_point_script_functions)
