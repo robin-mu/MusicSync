@@ -346,15 +346,16 @@ class ScriptParser:
                 break
             elif ch == '#':
                 self.parse_comment()
-            elif top and ch == '\n':
-                tokens.append(ScriptText("".join(text)))
-                tokens.append(ScriptLineBreak())
-                text = []
+            elif ch == '\n':
+                if top:
+                    tokens.append(ScriptText("".join(text)))
+                    tokens.append(ScriptLineBreak())
+                    text = []
             else:
                 text.append(ch)
 
         if text:
-            tokens.append(ScriptText("".join(text)))
+            tokens.append(ScriptText("".join(text).strip()))
 
         return tokens
 
