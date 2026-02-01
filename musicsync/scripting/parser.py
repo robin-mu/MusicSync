@@ -191,9 +191,29 @@ class ScriptFunction:
 
 
 class ScriptExpression(list):
+    def __init__(self, top=False):
+        self._top = top
+        super().__init__()
+
     def eval(self, state):
+        if self._top:
+            res = []
+            current = ''
+            for item in self:
+                if isinstance(item, ScriptLineBreak):
+                    if current:
+                        res.append(current)
+                    current = ''
+                else:
+                    current += item.eval(state)
+
+            return res
+
         return "".join(item.eval(state) for item in self)
 
+class ScriptLineBreak():
+    def __repr__(self):
+        return '<ScriptLineBreak>'
 
 def isidentif(ch):
     return ch.isalnum() or ch == '_'
@@ -311,6 +331,7 @@ class ScriptParser:
             #     self.__raise_char(ch)
 
     def parse_text(self, top):
+        tokens = []
         text = []
         while True:
             ch = self.read()
@@ -325,9 +346,17 @@ class ScriptParser:
                 break
             elif ch == '#':
                 self.parse_comment()
+            elif top and ch == '\n':
+                tokens.append(ScriptText("".join(text)))
+                tokens.append(ScriptLineBreak())
+                text = []
             else:
                 text.append(ch)
-        return ScriptText("".join(text))
+
+        if text:
+            tokens.append(ScriptText("".join(text)))
+
+        return tokens
 
     def parse_escape_sequence(self):
         ch = self.read()
@@ -343,13 +372,13 @@ class ScriptParser:
                 self.__raise_unicode(codepoint)
         elif ch is None:
             self.__raise_eof()
-        elif ch not in "$%(),\\":
+        elif ch not in "#$%(),\\":
             self.__raise_char(ch)
         else:
             return ch
 
     def parse_expression(self, top):
-        tokens = ScriptExpression()
+        tokens = ScriptExpression(top)
         while True:
             ch = self.read()
             if ch is None:
@@ -363,9 +392,12 @@ class ScriptParser:
                 tokens.append(self.parse_function())
             elif ch == '%':
                 tokens.append(self.parse_variable())
+            elif ch == '\n' and top:
+                tokens.append(ScriptLineBreak())
             else:
                 self.unread()
-                tokens.append(self.parse_text(top))
+                for token in self.parse_text(top):
+                    tokens.append(token)
         return (tokens, ch)
 
     def parse_comment(self):
