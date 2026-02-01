@@ -332,11 +332,11 @@ class ScriptParser:
 
     def parse_text(self, top):
         tokens = []
-        text = []
+        text = ''
         while True:
             ch = self.read()
             if ch == "\\":
-                text.append(self.parse_escape_sequence())
+                text += self.parse_escape_sequence()
             elif ch is None:
                 break
             elif not top and ch == '(':
@@ -346,18 +346,30 @@ class ScriptParser:
                 break
             elif ch == '#':
                 self.parse_comment()
+            elif ch == '"':
+                tokens.append(ScriptText(text.strip()))
+                tokens.append(self.parse_raw_text())
+                text = ''
             elif ch == '\n':
                 if top:
-                    tokens.append(ScriptText("".join(text)))
+                    tokens.append(ScriptText(text.strip()))
                     tokens.append(ScriptLineBreak())
-                    text = []
+                    text = ''
             else:
-                text.append(ch)
+                text += ch
 
         if text:
-            tokens.append(ScriptText("".join(text).strip()))
+            tokens.append(ScriptText(text.strip()))
 
         return tokens
+
+    def parse_raw_text(self):
+        text = ''
+        ch = self.read()
+        while ch != '"':
+            text += ch
+            ch = self.read()
+        return ScriptText(text)
 
     def parse_escape_sequence(self):
         ch = self.read()
@@ -373,7 +385,7 @@ class ScriptParser:
                 self.__raise_unicode(codepoint)
         elif ch is None:
             self.__raise_eof()
-        elif ch not in "#$%(),\\":
+        elif ch not in "#$%(),\\\"":
             self.__raise_char(ch)
         else:
             return ch
