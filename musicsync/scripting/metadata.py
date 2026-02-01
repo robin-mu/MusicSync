@@ -45,11 +45,12 @@ from collections.abc import (
     Iterable,
     MutableMapping,
 )
+from typing import Any
 
 from musicsync.scripting.util import MULTI_VALUED_JOINER
 
 
-class Metadata(MutableMapping[str, str | list[str] | None]):
+class Metadata(MutableMapping[str, Any]):
     """List of metadata items with dict-like access."""
 
     __weights = [
@@ -82,7 +83,7 @@ class Metadata(MutableMapping[str, str | list[str] | None]):
         **kwargs,
     ):
         # self._lock = ReadWriteLockContext()
-        self._store: dict[str, list[str]] = dict()
+        self._store: dict[str, Any] = dict()
         self.deleted_tags: set[str] = set()
         # self.images: ImageList = ImageList()
         self.has_common_images = True
@@ -116,6 +117,166 @@ class Metadata(MutableMapping[str, str | list[str] | None]):
         if length < 0:
             raise ValueError("negative value: %d" % length)
         self._length = length
+
+    @staticmethod
+    def normalize_tag(name: str):
+        return name.rstrip(':')
+
+    def getall(self, name: str) -> list[str]:
+        # with self._lock.lock_for_read():
+        return self._store.get(self.normalize_tag(name), [])
+
+    # def getraw(self, name: str):
+    #     with self._lock.lock_for_read():
+    #         return self._store[self.normalize_tag(name)]
+    #
+    def get(self, name: str, default=None) -> str | None:
+        # with self._lock.lock_for_read():
+        values = self._store.get(self.normalize_tag(name), None)
+        if values:
+            # return self.multi_valued_joiner.join(values)
+            return values
+        else:
+            return default
+
+    def __getitem__(self, name: str) -> str:
+        return self.get(name) or ''
+
+    def _set(self, name, values):
+        name = self.normalize_tag(name)
+        # if isinstance(values, str) or not isinstance(values, Iterable):
+        #     values = [values]
+        if isinstance(values, list):
+            values = [value for value in values if value or value == 0 or value == '']
+        # Remove if there is only a single empty or blank element.
+        # if values and (len(values) > 1 or values[0]):
+        self._store[name] = values
+        self.deleted_tags.discard(name)
+
+        if not values:
+            self._del(name)
+
+    def set(self, name: str, values: str | list[str]):
+        # with self._lock.lock_for_write():
+        self._set(name, values)
+
+    def __setitem__(self, name, values):
+        self.set(name, values)
+
+    # def __contains__(self, name):
+    #     with self._lock.lock_for_read():
+    #         return self._store.__contains__(self.normalize_tag(name))
+    #
+    def _del(self, name):
+        name = self.normalize_tag(name)
+        try:
+            del self._store[name]
+        except KeyError:
+            pass
+        finally:
+            self.deleted_tags.add(name)
+
+    def __delitem__(self, name: str):
+        # with self._lock.lock_for_write():
+        self._del(name)
+
+    def delete(self, name: str):
+        del self[self.normalize_tag(name)]
+
+    def unset(self, name: str):
+        """Removes a tag from the metadata, but does not mark it for deletion.
+
+        Args:
+            name: name of the tag to unset
+        """
+        # with self._lock.lock_for_write():
+        name = self.normalize_tag(name)
+        try:
+            del self._store[name]
+        except KeyError:
+            pass
+
+    def __iter__(self):
+        # with self._lock.lock_for_read():
+        yield from self._store
+
+    def items(self):
+        # with self._lock.lock_for_read():
+        for name, values in self._store.items():
+            for value in values:
+                yield name, value
+
+    def __repr__(self):
+        return "%s(%r, deleted_tags=%r, length=%r, images=%r)" % (
+            self.__class__.__name__,
+            self._store,
+            self.deleted_tags,
+            self.length,
+            ''  # self.images,
+        )
+
+    def __str__(self):
+        return "store: %r\ndeleted: %r\nimages: %r\nlength: %r" % (
+            self._store,
+            self.deleted_tags,
+            '', # [str(img) for img in self.images],
+            self.length,
+        )
+
+    # def add_images(self, added_images):
+    #     if not added_images:
+    #         return False
+    #
+    #     current_images = set(self.images)
+    #     if added_images.isdisjoint(current_images):
+    #         self.images = ImageList(current_images.union(added_images))
+    #         self.has_common_images = False
+    #         return True
+    #
+    #     return False
+    #
+    # def remove_images(self, sources, removed_images):
+    #     """Removes `removed_images` from `images`, but only if they are not included in `sources`.
+    #
+    #     Args:
+    #         sources: List of source `Metadata` objects
+    #         removed_images: Set of `CoverArt` to removed
+    #
+    #     Returns:
+    #         True if self.images was modified, False else
+    #     """
+    #     if not self.images or not removed_images:
+    #         return False
+    #
+    #     if not sources:
+    #         self.images = ImageList()
+    #         self.has_common_images = True
+    #         return True
+    #
+    #     current_images = set(self.images)
+    #
+    #     if self.has_common_images and current_images == removed_images:
+    #         return False
+    #
+    #     common_images = True  # True, if all children share the same images
+    #     previous_images = None
+    #
+    #     # Iterate over all sources and check whether the images proposed to be
+    #     # removed are used in any sources. Images used in existing sources
+    #     # must not be removed.
+    #     for source_metadata in sources:
+    #         source_images = set(source_metadata.images)
+    #         if previous_images and common_images and previous_images != source_images:
+    #             common_images = False
+    #         previous_images = set(source_metadata.images)  # Remember for next iteration
+    #         removed_images = removed_images.difference(source_images)
+    #         if not removed_images and not common_images:
+    #             return False  # No images left to remove, abort immediately
+    #
+    #     new_images = current_images.difference(removed_images)
+    #     self.images = ImageList(new_images)
+    #     self.has_common_images = common_images
+    #     return True
 
     # @staticmethod
     # def length_score(a: int, b: int):
@@ -376,68 +537,6 @@ class Metadata(MutableMapping[str, str | list[str] | None]):
     # def clear_deleted(self):
     #     self.deleted_tags = set()
     #
-    @staticmethod
-    def normalize_tag(name: str):
-        return name.rstrip(':')
-
-    def getall(self, name: str) -> list[str]:
-        # with self._lock.lock_for_read():
-        return self._store.get(self.normalize_tag(name), [])
-
-    # def getraw(self, name: str):
-    #     with self._lock.lock_for_read():
-    #         return self._store[self.normalize_tag(name)]
-    #
-    def get(self, name: str, default=None) -> str | None:
-        # with self._lock.lock_for_read():
-        values = self._store.get(self.normalize_tag(name), None)
-        if values:
-            return self.multi_valued_joiner.join(values)
-        else:
-            return default
-
-    def __getitem__(self, name: str) -> str:
-        return self.get(name) or ''
-
-    def _set(self, name, values):
-        name = self.normalize_tag(name)
-        if isinstance(values, str) or not isinstance(values, Iterable):
-            values = [values]
-        values = [str(value) for value in values if value or value == 0 or value == '']
-        # Remove if there is only a single empty or blank element.
-        if values and (len(values) > 1 or values[0]):
-            self._store[name] = values
-            self.deleted_tags.discard(name)
-        elif name in self._store:
-            self._del(name)
-
-    def set(self, name: str, values: str | list[str]):
-        # with self._lock.lock_for_write():
-        self._set(name, values)
-
-    def __setitem__(self, name, values):
-        self.set(name, values)
-
-    # def __contains__(self, name):
-    #     with self._lock.lock_for_read():
-    #         return self._store.__contains__(self.normalize_tag(name))
-    #
-    def _del(self, name):
-        name = self.normalize_tag(name)
-        try:
-            del self._store[name]
-        except KeyError:
-            pass
-        finally:
-            self.deleted_tags.add(name)
-
-    def __delitem__(self, name: str):
-        # with self._lock.lock_for_write():
-        self._del(name)
-
-    def delete(self, name: str):
-        del self[self.normalize_tag(name)]
-
     # def add(self, name: str, value: str):
     #     if value or value == 0:
     #         with self._lock.lock_for_write():
@@ -450,28 +549,6 @@ class Metadata(MutableMapping[str, str | list[str] | None]):
     #     if value not in self.getall(name):
     #         self.add(name, value)
     #
-    def unset(self, name: str):
-        """Removes a tag from the metadata, but does not mark it for deletion.
-
-        Args:
-            name: name of the tag to unset
-        """
-        # with self._lock.lock_for_write():
-        name = self.normalize_tag(name)
-        try:
-            del self._store[name]
-        except KeyError:
-            pass
-
-    def __iter__(self):
-        # with self._lock.lock_for_read():
-        yield from self._store
-
-    def items(self):
-        # with self._lock.lock_for_read():
-        for name, values in self._store.items():
-            for value in values:
-                yield name, value
 
     # def rawitems(self):
     #     """Returns the metadata items.
@@ -501,74 +578,3 @@ class Metadata(MutableMapping[str, str | list[str] | None]):
     #     """
     #     self.apply_func(str.strip)
     #
-    def __repr__(self):
-        return "%s(%r, deleted_tags=%r, length=%r, images=%r)" % (
-            self.__class__.__name__,
-            self._store,
-            self.deleted_tags,
-            self.length,
-            ''  # self.images,
-        )
-
-    def __str__(self):
-        return "store: %r\ndeleted: %r\nimages: %r\nlength: %r" % (
-            self._store,
-            self.deleted_tags,
-            '', # [str(img) for img in self.images],
-            self.length,
-        )
-
-    # def add_images(self, added_images):
-    #     if not added_images:
-    #         return False
-    #
-    #     current_images = set(self.images)
-    #     if added_images.isdisjoint(current_images):
-    #         self.images = ImageList(current_images.union(added_images))
-    #         self.has_common_images = False
-    #         return True
-    #
-    #     return False
-    #
-    # def remove_images(self, sources, removed_images):
-    #     """Removes `removed_images` from `images`, but only if they are not included in `sources`.
-    #
-    #     Args:
-    #         sources: List of source `Metadata` objects
-    #         removed_images: Set of `CoverArt` to removed
-    #
-    #     Returns:
-    #         True if self.images was modified, False else
-    #     """
-    #     if not self.images or not removed_images:
-    #         return False
-    #
-    #     if not sources:
-    #         self.images = ImageList()
-    #         self.has_common_images = True
-    #         return True
-    #
-    #     current_images = set(self.images)
-    #
-    #     if self.has_common_images and current_images == removed_images:
-    #         return False
-    #
-    #     common_images = True  # True, if all children share the same images
-    #     previous_images = None
-    #
-    #     # Iterate over all sources and check whether the images proposed to be
-    #     # removed are used in any sources. Images used in existing sources
-    #     # must not be removed.
-    #     for source_metadata in sources:
-    #         source_images = set(source_metadata.images)
-    #         if previous_images and common_images and previous_images != source_images:
-    #             common_images = False
-    #         previous_images = set(source_metadata.images)  # Remember for next iteration
-    #         removed_images = removed_images.difference(source_images)
-    #         if not removed_images and not common_images:
-    #             return False  # No images left to remove, abort immediately
-    #
-    #     new_images = current_images.difference(removed_images)
-    #     self.images = ImageList(new_images)
-    #     self.has_common_images = common_images
-    #     return True
