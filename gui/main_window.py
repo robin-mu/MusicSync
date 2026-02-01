@@ -19,16 +19,14 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QStyle,
 )
 
-from musicsync.music_sync_library import ExternalMetadataTable, TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection, MetadataField, MetadataSuggestion, FileTag
+from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
+    Collection, MetadataField, FileTag
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
-from .models.external_metadata_tables_model import ExternalMetadataTablesModel, ExternalMetadataTablesColumn
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
 from .models.file_tags_model import FileTagsModel, FileTagsTableColumn
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from .models.metadata_fields_model import MetadataFieldsModel, MetadataFieldsTableColumn, CheckboxDelegate
-from .models.metadata_suggestions_model import MetadataSuggestionsModel, MetadataSuggestionsTableColumn
 from .models.sync_action_combobox_model import SyncActionComboboxModel
 from .threads import ThreadingWorker
 
@@ -83,29 +81,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_filename_format_label.mousePressEvent = self.open_doc_url
 
         # Metadata suggestions tab
-        # Metadata fields table
-        #self.fields_table.setModel(MetadataFieldsModel())
+        self.fields_table.setModel(MetadataFieldsModel(deepcopy(self.treeView.model().metadata_fields), parent=self))
+        self.fields_table.setItemDelegateForColumn(MetadataFieldsTableColumn.ENABLED, CheckboxDelegate(self))
+        for row in range(self.fields_table.model().rowCount()):
+            self.fields_table.openPersistentEditor(self.fields_table.model().index(row, MetadataFieldsTableColumn.ENABLED))
+            self.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.ENABLED).refresh_editor(self.fields_table.model().index(row, MetadataFieldsTableColumn.ENABLED))
+        self.fields_table.resizeColumnToContents(0)
+        self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
+
 
         self.field_add_button.pressed.connect(self.add_field)
         self.field_remove_button.pressed.connect(self.remove_field)
-
-        # metadata suggestions table
-        #self.suggestions_table.setModel(MetadataSuggestionsModel())
-        # self.suggestions_table.horizontalHeader().setMouseTracking(True)
-        # self.suggesstions_table.setStyle(MetadataSuggestionsTableStyle())
-        # self.suggetions_table.horizontalHeader().sectionClicked.connect(self.suggestions_table_header_clicked)
-        # self.suggestions_table.horizontalHeader().installEventFilter(self)
-        # self.installEventFilter(self)
-        # self.suggestions_table.resizeColumnsToContents()
-
-        # self.suggestions_add_button.pressed.connect(self.add_suggestion)
-        # self.suggestions_remove_button.pressed.connect(self.remove_suggestion)
-
-        # external metadata tables table
-        # self.external_tables_table.setModel(ExternalMetadataTablesModel())
-        #
-        # self.external_table_add_button.pressed.connect(self.add_external_table)
-        # self.external_table_remove_button.pressed.connect(self.remove_external_table)
 
         # file tags table
         self.tag_settings_table.setModel(FileTagsModel())
@@ -125,53 +111,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 QUrl('https://github.com/robin-mu/MusicSync?tab=readme-ov-file#formatting'))
 
     def eventFilter(self, obj, event):
-        def over_resize_handle(pos):
-            idx = self.suggestions_table.horizontalHeader().logicalIndexAt(pos)
-            if idx < 0:
-                return False
-            left = self.suggestions_table.horizontalHeader().sectionPosition(idx)
-            right = left + self.suggestions_table.horizontalHeader().sectionSize(idx)
-            margin = 3
-            return abs(pos.x() - left) <= margin or abs(pos.x() - right) <= margin
-
-        def update_cursor():
-            global_pos = QCursor.pos()
-            pos = self.suggestions_table.horizontalHeader().mapFromGlobal(global_pos)
-            over_idx = self.suggestions_table.horizontalHeader().logicalIndexAt(pos)
-            if over_idx == -1:
-                return
-
-            idx_url = MetadataSuggestionsTableColumn(over_idx).doc_url()
-
-            if et == QEvent.Type.KeyPress and event.key() == QtCore.Qt.Key.Key_Control:
-                ctrl_down = True
-            elif et == QEvent.Type.KeyRelease and event.key() == QtCore.Qt.Key.Key_Control:
-                ctrl_down = False
-            else:
-                ctrl_down = QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier
-
-            if over_resize_handle(pos):
-                self.suggestions_table.horizontalHeader().setCursor(QCursor(QtCore.Qt.CursorShape.SplitHCursor))
-                return
-
-            if idx_url and ctrl_down:
-                self.suggestions_table.horizontalHeader().setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            else:
-                self.suggestions_table.horizontalHeader().unsetCursor()
-
         et = event.type()
 
         for box in self.action_combo_boxes.keys():
             if obj is box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
                 self.statusbar.clearMessage()
-
-        suggestions_header_events = (QEvent.Type.Enter, QEvent.Type.HoverEnter, QEvent.Type.Leave,
-                                     QEvent.Type.HoverLeave,
-                                     QEvent.Type.MouseMove, QEvent.Type.HoverMove)
-
-        # if obj is self.suggestions_table.horizontalHeader() and et in suggestions_header_events or obj is self and et in (
-        #         QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
-        #     update_cursor()
 
         return super(MainWindow, self).eventFilter(obj, event)
 
@@ -215,6 +159,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.update_sync_stack()
 
     def save_library(self):
+        self.save_settings()
+        self.treeView.model().metadata_fields = deepcopy(self.fields_table.model().fields)
         if self.treeView.model().path:
             self.treeView.model().to_xml()
             return True
@@ -334,9 +280,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        #item.metadata_suggestions = deepcopy(self.fields_table.model().fields)
+        item.enabled_metadata_fields = [f.name for f in self.fields_table.model().fields if f.enabled]
         item.file_tags = deepcopy(self.tag_settings_table.model().tags)
-        # self.treeView.model().external_metadata_tables = self.external_tables_table.model().tables[1:]
+
+        self.save_field()
+        self.treeView.model().metadata_fields = deepcopy(self.fields_table.model().fields)
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -536,29 +484,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
 
         # Metadata fields table
-        # self.fields_table.setModel(MetadataFieldsModel(deepcopy(current_collection.metadata_suggestions), parent=self))
-        # for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.TIMED_DATA,
-        #             MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS, MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE,
-        #             MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
-        #     self.fields_table.setItemDelegateForColumn(col, CheckboxDelegate(self))
-        #
-        #     for row in range(self.fields_table.model().rowCount()):
-        #         self.fields_table.openPersistentEditor(self.fields_table.model().index(row, col))
-        #
-        # self.fields_table.sortByColumn(MetadataFieldsTableColumn.ENABLED, QtCore.Qt.SortOrder.AscendingOrder)
-        # self.fields_table.resizeColumnsToContents()
-        #
-        # self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
-        #
-        # self.suggestions_table.setModel(MetadataSuggestionsModel())
+        self.fields_table.model().update_checkboxes(current_collection.enabled_metadata_fields)
+        for row in range(self.fields_table.model().rowCount()):
+            self.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.ENABLED).refresh_editor(self.fields_table.model().index(row, MetadataFieldsTableColumn.ENABLED))
 
-        # external tables
-        # external_metadata_tables = ([ExternalMetadataTable(id=0,
-        #                                                    name='Table of this library',
-        #                                                    path=self.treeView.model().metadata_table_path)] +
-        #                             deepcopy(self.treeView.model().external_metadata_tables))
-        # self.external_tables_table.setModel(ExternalMetadataTablesModel(external_metadata_tables, parent=self))
-        # self.external_tables_table.resizeColumnsToContents()
+        self.fields_table.resizeColumnToContents(0)
 
         # file tags
         self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
@@ -618,17 +548,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_field(self):
         self.fields_table.model().beginInsertRows(QModelIndex(), self.fields_table.model().rowCount(),
                                                   self.fields_table.model().rowCount())
-        self.fields_table.model().fields.append(MetadataField('', []))
+        self.fields_table.model().fields.append(MetadataField(''))
 
-        for col in [MetadataFieldsTableColumn.ENABLED, MetadataFieldsTableColumn.SHOW_FORMAT_OPTIONS,
-                    MetadataFieldsTableColumn.DEFAULT_FORMAT_AS_TITLE,
-                    MetadataFieldsTableColumn.DEFAULT_REMOVE_BRACKETS]:
-            self.fields_table.openPersistentEditor(
-                self.fields_table.model().index(self.fields_table.model().rowCount() - 1, col))
+        self.fields_table.openPersistentEditor(
+            self.fields_table.model().index(self.fields_table.model().rowCount() - 1, MetadataFieldsTableColumn.ENABLED))
         self.fields_table.model().endInsertRows()
 
         new_index = self.fields_table.model().index(self.fields_table.model().rowCount() - 1,
                                                     MetadataFieldsTableColumn.NAME)
+        self.fields_table.selectRow(new_index.row())
         self.fields_table.edit(new_index)
 
     def remove_field(self):
@@ -639,67 +567,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.fields_table.model().fields.pop(index)
         self.fields_table.model().endRemoveRows()
 
+    def save_field(self, selection: QItemSelection | None = None):
+        if selection is None:
+            index = self.fields_table.selectedIndexes()
+            if len(index) == 0:
+                return
+            field = self.fields_table.model().fields[index[0].row()]
+        else:
+            field = self.fields_table.model().fields[selection.indexes()[0].row()]
+
+        field.field_name = self.field_name_entry.text()
+        field.timed_data = self.timed_field_checkbox.isChecked()
+        field.show_format_options = self.format_options_group_box.isChecked()
+        field.default_format_as_title = self.format_as_title_checkbox.isChecked()
+        field.default_remove_brackets = self.remove_brackets_checkbox.isChecked()
+        field.script = self.script_editor.toPlainText()
+
     def field_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
+        if not deselected.isEmpty():
+            self.save_field(deselected)
+
         if selected.isEmpty():
             return
-        field = self.fields_table.model().fields[selected.indexes()[0].row()]
-        self.selected_field_label.setText(self.selected_field_label.text().split(':')[0] + ': ' + field.name)
-        self.suggestions_table.setModel(MetadataSuggestionsModel(field.suggestions, parent=self))
-        self.suggestions_table.resizeColumnsToContents()
-
-    def suggestions_table_header_clicked(self, section: int):
-        modifier = QtWidgets.QApplication.keyboardModifiers()
-        sec_url = MetadataSuggestionsTableColumn(section).doc_url()
-        if modifier == QtCore.Qt.KeyboardModifier.ControlModifier:
-            QDesktopServices.openUrl(QUrl(sec_url))
-
-    def add_suggestion(self):
-        if self.suggestions_table.model() is None:
-            return
-
-        row_idx = self.suggestions_table.currentIndex().row()
-        if row_idx != -1 and QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ShiftModifier:
-            new_idx = row_idx + 1
-        else:
-            new_idx = self.suggestions_table.model().rowCount()
-
-        self.suggestions_table.model().beginInsertRows(QModelIndex(), new_idx, new_idx)
-        self.suggestions_table.model().suggestions.insert(new_idx, MetadataSuggestion(''))
-        self.suggestions_table.model().endInsertRows()
-
-        new_index = self.suggestions_table.model().index(new_idx, MetadataSuggestionsTableColumn.FROM)
-        self.suggestions_table.edit(new_index)
-
-    def remove_suggestion(self):
-        if self.suggestions_table.model() is None or self.suggestions_table.currentIndex().row() == -1:
-            return
-
-        remove_idx = self.suggestions_table.currentIndex().row()
-        self.suggestions_table.model().beginRemoveRows(QModelIndex(), remove_idx, remove_idx)
-        self.suggestions_table.model().suggestions.pop(remove_idx)
-        self.suggestions_table.model().endRemoveRows()
-
-    def add_external_table(self):
-        self.external_tables_table.model().beginInsertRows(QModelIndex(), self.external_tables_table.model().rowCount(),
-                                                           self.external_tables_table.model().rowCount())
-
-        new_id = max(self.external_tables_table.model().tables, key=lambda t: t.id).id + 1
-        self.external_tables_table.model().tables.append(ExternalMetadataTable(new_id))
-
-        self.external_tables_table.model().endInsertRows()
-
-        new_index = self.external_tables_table.model().index(self.external_tables_table.model().rowCount() - 1,
-                                                             ExternalMetadataTablesColumn.NAME)
-        self.external_tables_table.edit(new_index)
-
-    def remove_external_table(self):
-        index = self.external_tables_table.currentIndex().row()
-        if index <= 0:
-            return
-
-        self.external_tables_table.model().beginRemoveRows(QModelIndex(), index, index)
-        self.external_tables_table.model().tables.pop(index)
-        self.external_tables_table.model().endRemoveRows()
+        field: MetadataField = self.fields_table.model().fields[selected.indexes()[0].row()]
+        self.field_name_entry.setText(field.field_name)
+        self.timed_field_checkbox.setChecked(field.timed_data)
+        self.format_options_group_box.setChecked(field.show_format_options)
+        self.format_as_title_checkbox.setChecked(field.default_format_as_title)
+        self.remove_brackets_checkbox.setChecked(field.default_remove_brackets)
+        self.script_editor.setPlainText(field.script)
 
     def add_tag(self):
         self.tag_settings_table.model().beginInsertRows(QModelIndex(), self.tag_settings_table.model().rowCount(),

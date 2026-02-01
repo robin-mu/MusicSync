@@ -20,7 +20,7 @@ from .utils import classproperty
 @dataclass
 class MusicSyncLibrary:
     metadata_table_path: str = ''
-    external_metadata_tables: list['ExternalMetadataTable'] = field(default_factory=list)
+    metadata_fields: list['MetadataField'] = field(default_factory=list)
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
 
     @staticmethod
@@ -28,30 +28,29 @@ class MusicSyncLibrary:
         tree = et.parse(xml_path)
         root = tree.getroot()
         children = []
-        external_metadata_tables = []
+        metadata_fields = []
         for child in root:
             if child.tag == 'Folder':
                 children.append(Folder.from_xml(child))
             elif child.tag == 'Collection':
                 children.append(Collection.from_xml(child))
-            elif child.tag == 'ExternalMetadataTable':
-                external_metadata_tables.append(ExternalMetadataTable.from_xml(child))
+            elif child.tag == 'MetadataField':
+                metadata_fields.append(MetadataField.from_xml(child))
 
-        return MusicSyncLibrary(children=children, external_metadata_tables=external_metadata_tables, **root.attrib)
+        return MusicSyncLibrary(children=children, metadata_fields=metadata_fields, **root.attrib)
 
     def write_xml(self, xml_path: str):
         attrs = vars(self).copy()
         attrs.pop('children')
-        attrs.pop('external_metadata_tables')
+        attrs.pop('metadata_fields')
 
         root = et.Element('MusicSyncLibrary', **attrs)
-        for table in self.external_metadata_tables:
-            root.append(table.to_xml())
+        for field in self.metadata_fields:
+            root.append(field.to_xml())
         for child in self.children:
             root.append(child.to_xml())
 
         et.ElementTree(root).write(xml_path)
-
 
 @dataclass
 class Folder(XmlObject):
@@ -199,16 +198,16 @@ class TrackSyncAction(StrEnum):
 @dataclass
 class MetadataField(XmlObject):
     name: str
-    suggestions: list['MetadataSuggestion']
-    enabled: bool = True
+    field_name: str = ''
     timed_data: bool = False
     show_format_options: bool = False
     default_format_as_title: bool = False
     default_remove_brackets: bool = False
+    script: str = ''
+
+    enabled: bool = field(default=False, compare=False, repr=False)
 
     def __post_init__(self):
-        if isinstance(self.enabled, str):
-            self.enabled = self.enabled == 'True'
         if isinstance(self.timed_data, str):
             self.timed_data = self.timed_data == 'True'
         if isinstance(self.show_format_options, str):
@@ -220,58 +219,20 @@ class MetadataField(XmlObject):
 
     @staticmethod
     def from_xml(el: Element) -> 'XmlObject':
-        suggestions = []
-        for child in el:
-            suggestions.append(MetadataSuggestion.from_xml(child))
-
-        return MetadataField(**(el.attrib | {'suggestions': suggestions}))
+        return MetadataField(**(el.attrib | {'script': el.text}))
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
-        attrs.pop('suggestions')
-        attrs['enabled'] = str(self.enabled)
+        attrs.pop('enabled')
+        attrs.pop('script')
         attrs['timed_data'] = str(self.timed_data)
         attrs['show_format_options'] = str(self.show_format_options)
         attrs['default_format_as_title'] = str(self.default_format_as_title)
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
 
-        el = et.Element('MetadataField', **attrs)
-        for suggestion in self.suggestions:
-            el.append(suggestion.to_xml())
+        el = et.Element('MetadataField', attrib=attrs)
+        el.text = self.script
         return el
-
-
-@dataclass
-class MetadataSuggestion(XmlObject):
-    pattern_from: str
-    pattern_to: str = ''
-    replace_regex: str = ''
-    replace_with: str = ''
-    split_separators: str = ''
-    split_slice: str = ''
-    condition: str = ''
-
-    @staticmethod
-    def from_xml(el: Element) -> 'MetadataSuggestion':
-        return MetadataSuggestion(**el.attrib)
-
-    def to_xml(self) -> et.Element:
-        return et.Element('MetadataSuggestion', **vars(self))
-
-
-@dataclass
-class ExternalMetadataTable(XmlObject):
-    id: int = -1
-    name: str = ''
-    path: str = ''
-
-    def to_xml(self) -> Element:
-        return et.Element('ExternalMetadataTable', id=str(self.id), name=self.name, path=self.path)
-
-    @staticmethod
-    def from_xml(el: Element) -> 'ExternalMetadataTable':
-        return ExternalMetadataTable(id=int(el.attrib['id']), name=el.attrib['name'], path=el.attrib['path'])
-
 
 @dataclass
 class FileTag(XmlObject):
@@ -302,44 +263,44 @@ class Collection(XmlObject):
     # field for suggestion from yt_dlp's metadata with name "field"
     # 0:field for suggestion from this table column with name "field"
     # 1:field for suggestion from external table with id 1 and column with name "field"
-    @classproperty
-    def DEFAULT_METADATA_SUGGESTIONS(self) -> list['MetadataField']:
-        return [
-            MetadataField('title', suggestions=[
-                MetadataSuggestion('track'),
-                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
-                MetadataSuggestion('title', '["“](.+)["“]'),
-                MetadataSuggestion('title')
-            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataField('artist', suggestions=[
-                MetadataSuggestion('artist', split_separators=r'\,'),
-                MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', ),
-                MetadataSuggestion('title', ' by (.+)'),
-                MetadataSuggestion('channel'),
-                MetadataSuggestion('title')
-            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataField('album', suggestions=[
-                MetadataSuggestion('album'),
-                MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
-            ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
-            MetadataField('track', suggestions=[
-                MetadataSuggestion('track'),
-                MetadataSuggestion('playlist_index'),
-            ], enabled=False),
-            MetadataField('lyrics', suggestions=[
-                MetadataSuggestion('EXT_LYRICS:%(0:artist,artist&{} - )s%(0:title,track,title)s')
-            ], enabled=False, timed_data=True),
-            MetadataField('chapters', suggestions=[
-                MetadataSuggestion('%(chapters)s+MULTI_VIDEO:%(title)s'),
-            ], enabled=False, timed_data=True),
-            MetadataField('thumbnail', suggestions=[
-                MetadataSuggestion('%(thumbnails.-1.url)s'),
-                MetadataSuggestion('%(thumbnails.2.url)s'),
-            ], enabled=False),
-            MetadataField('timed_data', suggestions=[
-                MetadataSuggestion('%(0:lyrics)s+%(0:chapters)s'),
-            ], enabled=False, timed_data=True),
-        ]
+    # @classproperty
+    # def DEFAULT_METADATA_SUGGESTIONS(self) -> list['MetadataField']:
+    #     return [
+    #         MetadataField('title', suggestions=[
+    #             MetadataSuggestion('track'),
+    #             MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', split_slice='::-1'),
+    #             MetadataSuggestion('title', '["“](.+)["“]'),
+    #             MetadataSuggestion('title')
+    #         ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+    #         MetadataField('artist', suggestions=[
+    #             MetadataSuggestion('artist', split_separators=r'\,'),
+    #             MetadataSuggestion('title', split_separators=' - , – , — ,-,|,:,~,‐,_,∙', ),
+    #             MetadataSuggestion('title', ' by (.+)'),
+    #             MetadataSuggestion('channel'),
+    #             MetadataSuggestion('title')
+    #         ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+    #         MetadataField('album', suggestions=[
+    #             MetadataSuggestion('album'),
+    #             MetadataSuggestion('playlist', replace_regex='Album - ', replace_with=''),
+    #         ], show_format_options=True, default_format_as_title=True, default_remove_brackets=True),
+    #         MetadataField('track', suggestions=[
+    #             MetadataSuggestion('track'),
+    #             MetadataSuggestion('playlist_index'),
+    #         ], enabled=False),
+    #         MetadataField('lyrics', suggestions=[
+    #             MetadataSuggestion('EXT_LYRICS:%(0:artist,artist&{} - )s%(0:title,track,title)s')
+    #         ], enabled=False, timed_data=True),
+    #         MetadataField('chapters', suggestions=[
+    #             MetadataSuggestion('%(chapters)s+MULTI_VIDEO:%(title)s'),
+    #         ], enabled=False, timed_data=True),
+    #         MetadataField('thumbnail', suggestions=[
+    #             MetadataSuggestion('%(thumbnails.-1.url)s'),
+    #             MetadataSuggestion('%(thumbnails.2.url)s'),
+    #         ], enabled=False),
+    #         MetadataField('timed_data', suggestions=[
+    #             MetadataSuggestion('%(0:lyrics)s+%(0:chapters)s'),
+    #         ], enabled=False, timed_data=True),
+    #     ]
 
     @classproperty
     def DEFAULT_FILE_TAGS(self) -> list['FileTag']:
@@ -375,7 +336,7 @@ class Collection(XmlObject):
 
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS)
 
-    metadata_suggestions: list['MetadataField'] = field(default_factory=lambda: Collection.DEFAULT_METADATA_SUGGESTIONS)
+    enabled_metadata_fields: list[str] = field(default_factory=list)
     file_tags: list['FileTag'] = field(default_factory=lambda: Collection.DEFAULT_FILE_TAGS)
 
     urls: list['CollectionUrl'] = field(default_factory=list)
@@ -404,11 +365,11 @@ class Collection(XmlObject):
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':
                 kwargs['urls'].append(CollectionUrl.from_xml(child))
-            elif child.tag == 'MetadataSuggestions':
-                kwargs['metadata_suggestions'] = []
-                for column in child:
-                    if column.tag == 'MetadataField':
-                        kwargs['metadata_suggestions'].append(MetadataField.from_xml(column))
+            elif child.tag == 'EnabledMetadataFields':
+                kwargs['enabled_metadata_fields'] = []
+                for ref in child:
+                    if ref.tag == 'MetadataFieldRef':
+                        kwargs['enabled_metadata_fields'].append(ref.attrib['name'])
             elif child.tag == 'FileTags':
                 kwargs['file_tags'] = [FileTag.from_xml(tag) for tag in child]
 
@@ -422,7 +383,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_title_as_url_name')
         attrs.pop('sync_actions')
         attrs.pop('file_tags')
-        attrs.pop('metadata_suggestions')
+        attrs.pop('enabled_metadata_fields')
         attrs.pop('downloader')
         attrs.pop('excluded_yt_dlp_fields')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
@@ -442,11 +403,11 @@ class Collection(XmlObject):
         if self.sync_actions != Collection.DEFAULT_SYNC_ACTIONS:
             el.append(et.Element('SyncActions', **self.sync_actions))
 
-        if self.metadata_suggestions != Collection.DEFAULT_METADATA_SUGGESTIONS:
-            suggestions = et.Element('MetadataSuggestions')
-            for suggestion in self.metadata_suggestions:
-                suggestions.append(suggestion.to_xml())
-            el.append(suggestions)
+        if self.enabled_metadata_fields:
+            fields = et.Element('EnabledMetadataFields')
+            for ref in self.enabled_metadata_fields:
+                fields.append(et.Element('MetadataFieldRef', attrib={'name': ref}))
+            el.append(fields)
 
         if self.file_tags != Collection.DEFAULT_FILE_TAGS:
             file_tags = et.Element('FileTags')

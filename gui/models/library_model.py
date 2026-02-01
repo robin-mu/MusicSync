@@ -7,7 +7,7 @@ from xml.etree.ElementTree import Element
 from PySide6.QtGui import QIcon
 
 from .xml_model import XmlObjectModel, XmlObjectModelItem
-from musicsync.music_sync_library import Collection, CollectionUrl, ExternalMetadataTable, Folder, MusicSyncLibrary, Track
+from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Track, MetadataField
 
 
 class FolderItem(XmlObjectModelItem):
@@ -52,7 +52,7 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
-        self.metadata_suggestions = kwargs.get('metadata_suggestions', Collection.DEFAULT_METADATA_SUGGESTIONS)
+        self.enabled_metadata_fields = kwargs.get('enabled_metadata_fields', [])
         self.file_tags = kwargs.get('file_tags', Collection.DEFAULT_FILE_TAGS)
         self.url_name_format = kwargs.get('url_name_format', '')
         self.auto_concat_urls = kwargs.get('auto_concat_urls', '')
@@ -179,12 +179,12 @@ class LibraryModel(XmlObjectModel):
         self.root = self.invisibleRootItem()
         self.metadata_table_path: str = ''
         self.loaded_library_object: MusicSyncLibrary | None = None
-        self.external_metadata_tables: list[ExternalMetadataTable] = []
+        self.metadata_fields: list['MetadataField'] = []
 
         if xml_path is not None:
             self.loaded_library_object = MusicSyncLibrary.read_xml(xml_path)
             self.metadata_table_path = self.loaded_library_object.metadata_table_path
-            self.external_metadata_tables = self.loaded_library_object.external_metadata_tables
+            self.metadata_fields = self.loaded_library_object.metadata_fields
 
             for child in self.loaded_library_object.children:
                 if isinstance(child, Folder):
@@ -198,7 +198,7 @@ class LibraryModel(XmlObjectModel):
             row = typing.cast(XmlObjectModelItem, self.root.child(i))
             children.append(row.to_xml_object())
         return MusicSyncLibrary(metadata_table_path=self.metadata_table_path,
-                                external_metadata_tables=self.external_metadata_tables,
+                                metadata_fields=self.metadata_fields,
                                 children=children)
 
     def to_xml(self, filename: str | None=None):
