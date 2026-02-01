@@ -1,5 +1,6 @@
 # Copied from https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py
 # at commit https://github.com/yt-dlp/yt-dlp/commit/5bf91072bcfbb26e6618d668a0b3379a3a862f8c
+# modified so that output template evaluation is possible without a YoutubeDL-object
 
 import time
 import re
@@ -27,29 +28,53 @@ from yt_dlp.utils import (
     format_decimal_suffix
 )
 
-def prepare_outtmpl(self, outtmpl, info_dict, sanitize=False):
+def _copy_infodict(info_dict):
+    info_dict = dict(info_dict)
+    info_dict.pop('__postprocessors', None)
+    info_dict.pop('__pending_error', None)
+    return info_dict
+
+def format_resolution(format, default='unknown'):
+    if format.get('vcodec') == 'none' and format.get('acodec') != 'none':
+        return 'audio only'
+    if format.get('resolution') is not None:
+        return format['resolution']
+    if format.get('width') and format.get('height'):
+        return '%dx%d' % (format['width'], format['height'])
+    elif format.get('height'):
+        return '{}p'.format(format['height'])
+    elif format.get('width'):
+        return '%dx?' % format['width']
+    return default
+
+def prepare_outtmpl(outtmpl, info_dict, params=None, sanitize=False):
     """ Make the outtmpl and info_dict suitable for substitution: ydl.escape_outtmpl(outtmpl) % info_dict
     @param sanitize    Whether to sanitize the output as a filename
     """
 
+    if params is None:
+        params = {}
+
     info_dict.setdefault('epoch', int(time.time()))  # keep epoch consistent once set
 
-    info_dict = self._copy_infodict(info_dict)
+    info_dict = _copy_infodict(info_dict)
     info_dict['duration_string'] = (  # %(duration>%H-%M-%S)s is wrong if duration > 24hrs
         formatSeconds(info_dict['duration'], '-' if sanitize else ':')
         if info_dict.get('duration', None) is not None
         else None)
-    info_dict['autonumber'] = int(self.params.get('autonumber_start', 1) - 1 + self._num_downloads)
-    info_dict['video_autonumber'] = self._num_videos
+
+    # TODO write _num_downloads and _num_videos into info dict
+    info_dict['autonumber'] = int(params.get('autonumber_start', 1) - 1 + info_dict.get('_num_downloads', 0))
+    info_dict['video_autonumber'] = info_dict.get('_num_videos', 0)
     if info_dict.get('resolution') is None:
-        info_dict['resolution'] = self.format_resolution(info_dict, default=None)
+        info_dict['resolution'] = format_resolution(info_dict, default=None)
 
     # For fields playlist_index, playlist_autonumber and autonumber convert all occurrences
     # of %(field)s to %(field)0Nd for backward compatibility
     field_size_compat_map = {
         'playlist_index': number_of_digits(info_dict.get('__last_playlist_index') or 0),
         'playlist_autonumber': number_of_digits(info_dict.get('n_entries') or 0),
-        'autonumber': self.params.get('autonumber_size') or 5,
+        'autonumber': params.get('autonumber_size') or 5,
     }
 
     TMPL_DICT = {}
@@ -143,25 +168,25 @@ def prepare_outtmpl(self, outtmpl, info_dict, sanitize=False):
             value = None
         return value
 
-    na = self.params.get('outtmpl_na_placeholder', 'NA')
+    na = params.get('outtmpl_na_placeholder', 'NA')
 
     def filename_sanitizer(key, value, restricted):
         return sanitize_filename(str(value), restricted=restricted, is_id=(
             bool(re.search(r'(^|[_.])id(\.|$)', key))
-            if 'filename-sanitization' in self.params['compat_opts']
+            if 'filename-sanitization' in params.get('compat_opts', [])
             else NO_DEFAULT))
 
-    if callable(sanitize):
-        self.deprecation_warning('Passing a callable "sanitize" to YoutubeDL.prepare_outtmpl is deprecated')
-    elif not sanitize:
+    #if callable(sanitize):
+    #    self.deprecation_warning('Passing a callable "sanitize" to YoutubeDL.prepare_outtmpl is deprecated')
+    if not sanitize:
         pass
-    elif (sys.platform != 'win32' and not self.params.get('restrictfilenames')
-          and self.params.get('windowsfilenames') is False):
+    elif (sys.platform != 'win32' and not params.get('restrictfilenames')
+          and params.get('windowsfilenames') is False):
         def sanitize(key, value):
             return str(value).replace('/', '\u29F8').replace('\0', '')
     else:
         def sanitize(key, value):
-            return filename_sanitizer(key, value, restricted=self.params.get('restrictfilenames'))
+            return filename_sanitizer(key, value, restricted=params.get('restrictfilenames'))
 
     def _dumpjson_default(obj):
         if isinstance(obj, (set, LazyList)):
@@ -258,7 +283,13 @@ def prepare_outtmpl(self, outtmpl, info_dict, sanitize=False):
 
     return EXTERNAL_FORMAT_RE.sub(create_key, outtmpl), TMPL_DICT
 
+def escape_outtmpl(outtmpl):
+    """ Escape any remaining strings like %s, %abc% etc. """
+    return re.sub(
+        STR_FORMAT_RE_TMPL.format('', '(?![%(\0])'),
+        lambda mobj: ('' if mobj.group('has_key') else '%') + mobj.group(0),
+        outtmpl)
 
-def evaluate_outtmpl(self, outtmpl, info_dict, *args, **kwargs):
-    outtmpl, info_dict = self.prepare_outtmpl(outtmpl, info_dict, *args, **kwargs)
-    return self.escape_outtmpl(outtmpl) % info_dict
+def evaluate_outtmpl(outtmpl, info_dict, *args, **kwargs):
+    outtmpl, info_dict = prepare_outtmpl(outtmpl, info_dict, *args, **kwargs)
+    return escape_outtmpl(outtmpl) % info_dict
