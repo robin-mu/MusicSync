@@ -123,6 +123,11 @@ class ScriptText(str):
         return self
 
 
+class ScriptRawText(str):
+    def eval(self, state):
+        return self
+
+
 def normalize_tagname(name):
     if name.startswith('_'):
         return '~' + name[1:]
@@ -199,11 +204,16 @@ class ScriptExpression(list):
         if self._top:
             res = []
             current = ''
+            raw_text_seen = False
+
             for item in self:
+                if isinstance(item, ScriptRawText):
+                    raw_text_seen = True
                 if isinstance(item, ScriptLineBreak):
-                    if current:
+                    if current or raw_text_seen:  # The empty suggestion is only appended if its tokens contain raw text
                         res.append(current)
                     current = ''
+                    raw_text_seen = False
                 else:
                     current += item.eval(state)
 
@@ -211,7 +221,7 @@ class ScriptExpression(list):
 
         return "".join(item.eval(state) for item in self)
 
-class ScriptLineBreak():
+class ScriptLineBreak:
     def __repr__(self):
         return '<ScriptLineBreak>'
 
@@ -369,7 +379,7 @@ class ScriptParser:
         while ch != '"':
             text += ch
             ch = self.read()
-        return ScriptText(text)
+        return ScriptRawText(text)
 
     def parse_escape_sequence(self):
         ch = self.read()
