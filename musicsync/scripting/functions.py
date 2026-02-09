@@ -40,12 +40,20 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 
-from collections import namedtuple
 import datetime
-from functools import reduce
 import operator
 import re
+from collections import namedtuple
+from functools import reduce
 
+from yt_dlp.utils import int_or_none, traverse_obj
+
+from musicsync.scripting.parser import (
+    MultiValue,
+    ScriptRuntimeError,
+    normalize_tagname,
+)
+from musicsync.scripting.script_functions import script_function
 from musicsync.scripting.util import (
     RELEASE_COUNTRIES,
     MULTI_VALUED_JOINER,
@@ -54,12 +62,6 @@ from musicsync.scripting.util import (
     pattern_as_regex,
     titlecase,
     uniqify
-)
-from musicsync.scripting.script_functions import script_function
-from musicsync.scripting.parser import (
-    MultiValue,
-    ScriptRuntimeError,
-    normalize_tagname,
 )
 
 
@@ -747,41 +749,41 @@ def func_performer(parser, pattern="", join=", "):
     return join.join(values)
 
 
-@script_function(
-    eval_args=False,
-    documentation=N_(
-        """Returns the number of matched tracks within a release.
-    **Only works in File Naming scripts.**
-
-_Since Picard 0.12_"""
-    ),
-)
-def func_matchedtracks(parser):
-    # only works in file naming scripts, always returns zero in tagging scripts
-    file = parser.file
-    if file and file.parent_item and getattr(file.parent_item, 'album', None):
-        return str(parser.file.parent_item.album.get_num_matched_tracks())
-    return '0'
-
-
-@script_function(
-    documentation=N_(
-        """Returns true if every track in the album is matched to a single file.
-**Only works in File Naming scripts.**"""
-    ),
-)
-def func_is_complete(parser):
-    # only works in file naming scripts, always returns zero in tagging scripts
-    file = parser.file
-    if (
-        file
-        and file.parent_item
-        and hasattr(file.parent_item, 'album')
-        and file.parent_item.album
-        and file.parent_item.album.is_complete()
-    ):
-        return '1'
-    return ''
+# @script_function(
+#     eval_args=False,
+#     documentation=N_(
+#         """Returns the number of matched tracks within a release.
+#     **Only works in File Naming scripts.**
+#
+# _Since Picard 0.12_"""
+#     ),
+# )
+# def func_matchedtracks(parser):
+#     # only works in file naming scripts, always returns zero in tagging scripts
+#     file = parser.file
+#     if file and file.parent_item and getattr(file.parent_item, 'album', None):
+#         return str(parser.file.parent_item.album.get_num_matched_tracks())
+#     return '0'
+#
+#
+# @script_function(
+#     documentation=N_(
+#         """Returns true if every track in the album is matched to a single file.
+# **Only works in File Naming scripts.**"""
+#     ),
+# )
+# def func_is_complete(parser):
+#     # only works in file naming scripts, always returns zero in tagging scripts
+#     file = parser.file
+#     if (
+#         file
+#         and file.parent_item
+#         and hasattr(file.parent_item, 'album')
+#         and file.parent_item.album
+#         and file.parent_item.album.is_complete()
+#     ):
+#         return '1'
+#     return ''
 
 
 @script_function(
@@ -1050,6 +1052,7 @@ _Since Picard 2.2_"""
     )
 )
 def func_is_video(parser):
+    # TODO change so that it works with yt-dlp's info-dict
     if parser.context['~video'] and parser.context['~video'] != '0':
         return '1'
     else:
@@ -1594,3 +1597,88 @@ _Since Picard 2.9_"""
 )
 def func_max(parser, _type, x, *args):
     return _extract(max, _type, x, *args)
+
+# =============================
+# Extra functions for MusicSync
+# =============================
+def _from_user_input(field):
+    if field == ':':
+        return ...
+    elif ':' in field:
+        return slice(*map(int_or_none, field.split(':')))
+    elif int_or_none(field) is not None:
+        return int(field)
+    return field
+
+def _traverse_context(parser, fields):
+    fields = [f for x in re.split(r'\.({.+?})\.?', fields)
+              for f in ([x] if x.startswith('{') else x.split('.'))]
+    for i in (0, -1):
+        if fields and not fields[i]:
+            fields.pop(i)
+
+    for i, f in enumerate(fields):
+        if not f.startswith('{'):
+            fields[i] = _from_user_input(f)
+            continue
+        assert f.endswith('}'), f'No closing brace for {f} in {fields}'
+        fields[i] = {k: list(map(_from_user_input, k.split('.'))) for k in f[1:-1].split(',')}
+
+    return traverse_obj(parser.context, fields, traverse_string=True)
+
+@script_function(
+    signature=N_("$setlist(name, value1, *args)"),
+    documentation=N_(
+        """
+        All arguments after `name` are interpreted as variable names.
+        
+        Sets the variable `name` to a list variable 
+        containing the values of all given other variables. Multi-value variables are saved as lists"""
+    ),
+)
+def func_setlist(parser, name, *args):
+    return func_set(parser, name, [_traverse_context(parser, arg) for arg in args])
+
+@script_function(
+    signature=N_("$setdict_text(name, value[, element_separator[, kv_separator]])"),
+    documentation=N_(
+        """Sets the variable `name` to a dictionary variable with content `value`, using `kv_separator` ("=" by default)
+        as the separator of keys and values, and `element_separator` (";" by default) as the separator between 
+        elements"""
+    ),
+)
+def func_setdict_text(parser, name, value, element_separator=';', kv_separator='='):
+    return func_set(parser, name, dict(v.split(kv_separator) for v in value.split(element_separator)))
+
+@script_function(
+    signature=N_("$setdict_vars(name, key1, value1, *args"),
+    documentation=N_(
+        """Sets the variable `name` to a dictionary where `key1` (given as a string) is mapped to `value1` (a variable 
+        name) etc. An arbitrary amount of key-value pairs can be specified."""
+    ),
+)
+def func_setdict_vars(parser, name, *args):
+    if len(args) % 2 != 0:
+        return ''
+    return func_set(parser, name, {args[i]: args[i+1] for i in range(0, len(args), 2)})
+
+@script_function(
+    signature=N_("$getlist(name, key)"),
+    documentation=N_(
+        """Gets the element at `key` from the list/dictionary variable `var_name`."""
+    ),
+)
+def func_getlist(parser, name, key):
+    var = func_get(parser, name)
+    if not var:
+        return ''
+
+    if isinstance(var, list):
+        try:
+            return str(var[int(key)])
+        except (KeyError | ValueError):
+            return ''
+    elif isinstance(var, dict):
+        return var.get(key, '')
+
+    return ''

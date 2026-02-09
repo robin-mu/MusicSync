@@ -196,12 +196,8 @@ class ScriptFunction:
 
 
 class ScriptExpression(list):
-    def __init__(self, top=False):
-        self._top = top
-        super().__init__()
-
-    def eval(self, state):
-        if self._top:
+    def eval(self, state, top: bool=False):
+        if top:
             res = []
             current = ''
             raw_text_seen = False
@@ -401,7 +397,7 @@ class ScriptParser:
             return ch
 
     def parse_expression(self, top):
-        tokens = ScriptExpression(top)
+        tokens = ScriptExpression()
         while True:
             ch = self.read()
             if ch is None:
@@ -421,7 +417,7 @@ class ScriptParser:
                 self.unread()
                 for token in self.parse_text(top):
                     tokens.append(token)
-        return (tokens, ch)
+        return tokens, ch
 
     def parse_comment(self):
         ch = self.read()
@@ -451,7 +447,7 @@ class ScriptParser:
         key = hash(script)
         if key not in ScriptParser._cache:
             ScriptParser._cache[key] = self.parse(script, True)
-        return ScriptParser._cache[key].eval(self)
+        return ScriptParser._cache[key].eval(self, top=True)
 
 
 class MultiValue(MutableSequence):
