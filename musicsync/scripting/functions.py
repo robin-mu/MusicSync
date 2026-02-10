@@ -401,7 +401,10 @@ def func_get(parser, name):
 @script_function(
     signature=N_("$copy(new,old)"),
     documentation=N_(
-        """Copies metadata from variable `old` to `new`.
+        """
+        Argument `old` is interpreted as a variable query.
+        
+        Copies metadata from variable `old` to `new`.
 The difference between `$set(new,%old%)` is that `$copy(new,old)` copies
     multi-value variables without flattening them.
 
@@ -411,14 +414,21 @@ _Since Picard 0.9_"""
 def func_copy(parser, new, old):
     new = normalize_tagname(new)
     old = normalize_tagname(old)
-    parser.context[new] = parser.context.getall(old)[:]
+    parser.context[new] = _traverse_context(parser, old)
     return ''
 
 
 @script_function(
     signature=N_("$copymerge(new,old[,keep_duplicates])"),
     documentation=N_(
-        """Merges metadata from variable `old` into `new`, removing duplicates and
+        """Argument `new` is interpreted as a variable name, `old` is interpreted as a variable query.
+        If `old` and `new` are both lists or both dicts, they will be merged as expected. 
+        If `new` is a string and `old` is a list or vice versa, the string will be prepended to the list if `new` is a string or appended if `old` is a string, and the resulting list will be saved to `new`.
+        If both are a string, they will be merged into a list.
+        All other argument type combinations will result in an error.
+        `keep_duplicates` will not have an effect if both arguments are dictionaries, as dictionaries can't hold duplicates by definition.        
+        
+        Merges metadata from variable `old` into `new`, removing duplicates and
     appending to the end, so retaining the original ordering. Like `$copy`, this
     will also copy multi-valued variables without flattening them.
 
@@ -431,8 +441,20 @@ def func_copymerge(parser, new, old, keep_duplicates=False):
     new = normalize_tagname(new)
     old = normalize_tagname(old)
     newvals = parser.context.getall(new)
-    oldvals = parser.context.getall(old)
-    parser.context[new] = newvals + oldvals if keep_duplicates else uniqify(newvals + oldvals)
+    oldvals = _traverse_context(parser, old)
+
+    if isinstance(newvals, str):
+        newvals = [newvals]
+
+    if isinstance(oldvals, str):
+        oldvals = [oldvals]
+
+    if isinstance(newvals, list) and isinstance(oldvals, list):
+        parser.context[new] = newvals + oldvals if keep_duplicates else uniqify(newvals + oldvals)
+    elif isinstance(newvals, dict) and isinstance(oldvals, dict):
+        parser.context[new] = oldvals | newvals
+    else:
+        raise ScriptRuntimeError(parser._function_stack.get(), f"Unsupported types for $copymerge: {type(newvals)}, {type(oldvals)}.")
     return ''
 
 
@@ -1630,7 +1652,7 @@ def _traverse_context(parser, fields):
     signature=N_("$setlist(name, value1, *args)"),
     documentation=N_(
         """
-        All arguments after `name` are interpreted as variable names.
+        All arguments after `name` are interpreted as variable queries.
         
         Sets the variable `name` to a list variable 
         containing the values of all given other variables. Multi-value variables are saved as lists"""
@@ -1653,32 +1675,11 @@ def func_setdict_text(parser, name, value, element_separator=';', kv_separator='
 @script_function(
     signature=N_("$setdict_vars(name, key1, value1, *args"),
     documentation=N_(
-        """Sets the variable `name` to a dictionary where `key1` (given as a string) is mapped to `value1` (a variable 
-        name) etc. An arbitrary amount of key-value pairs can be specified."""
+        """Sets the variable `name` to a dictionary where `key1` (given as a string) is mapped to `value1` (interpreted as a variable 
+        query) etc. An arbitrary amount of key-value pairs can be specified."""
     ),
 )
 def func_setdict_vars(parser, name, *args):
     if len(args) % 2 != 0:
-        return ''
-    return func_set(parser, name, {args[i]: args[i+1] for i in range(0, len(args), 2)})
-
-@script_function(
-    signature=N_("$getlist(name, key)"),
-    documentation=N_(
-        """Gets the element at `key` from the list/dictionary variable `var_name`."""
-    ),
-)
-def func_getlist(parser, name, key):
-    var = func_get(parser, name)
-    if not var:
-        return ''
-
-    if isinstance(var, list):
-        try:
-            return str(var[int(key)])
-        except (KeyError | ValueError):
-            return ''
-    elif isinstance(var, dict):
-        return var.get(key, '')
-
-    return ''
+        raise ScriptRuntimeError(parser._function_stack.get(), "Number of keys and values must be even.")
+    return func_set(parser, name, {args[i]: _traverse_context(parser, args[i+1]) for i in range(0, len(args), 2)})
