@@ -51,7 +51,6 @@ from yt_dlp.utils import int_or_none, traverse_obj
 from musicsync.scripting.parser import (
     MultiValue,
     ScriptRuntimeError,
-    normalize_tagname,
 )
 from musicsync.scripting.script_functions import script_function
 from musicsync.scripting.util import (
@@ -124,7 +123,7 @@ def func_left(parser, text, length):
 )
 def func_right(parser, text, length):
     try:
-        return text[-int(length) :]
+        return text[-int(length):]
     except ValueError:
         return ''
 
@@ -323,7 +322,7 @@ For example `$unset(performer:*)` would unset all performer tags."""
     ),
 )
 def func_unset(parser, name):
-    name = normalize_tagname(name)
+    # name = normalize_tagname(name)
     # Allow wild-card unset for certain keys
     if name in {'performer:*', 'comment:*', 'lyrics:*'}:
         name = name[:-1]
@@ -347,7 +346,8 @@ _Since Picard 2.1_"""
     ),
 )
 def func_delete(parser, name):
-    parser.context.delete(normalize_tagname(name))
+    # parser.context.delete(normalize_tagname(name))
+    parser.context.delete(name)
     return ''
 
 
@@ -364,7 +364,8 @@ Note: To create a variable which can be used for the file naming string, but
 )
 def func_set(parser, name, value):
     if value:
-        parser.context[normalize_tagname(name)] = value
+        # parser.context[normalize_tagname(name)] = value
+        parser.context[name] = value
     else:
         func_unset(parser, name)
     return ''
@@ -395,7 +396,8 @@ def func_setmulti(parser, name, value, separator=MULTI_VALUED_JOINER):
 )
 def func_get(parser, name):
     """Returns the variable ``name`` (equivalent to ``%name%``)."""
-    return parser.context.get(normalize_tagname(name), "")
+    # return parser.context.get(normalize_tagname(name), "")
+    return parser.context.get(name, "")
 
 
 @script_function(
@@ -412,8 +414,8 @@ _Since Picard 0.9_"""
     ),
 )
 def func_copy(parser, new, old):
-    new = normalize_tagname(new)
-    old = normalize_tagname(old)
+    # new = normalize_tagname(new)
+    # old = normalize_tagname(old)
     parser.context[new] = _traverse_context(parser, old)
     return ''
 
@@ -438,8 +440,8 @@ _Since Picard 1.0_"""
     ),
 )
 def func_copymerge(parser, new, old, keep_duplicates=False):
-    new = normalize_tagname(new)
-    old = normalize_tagname(old)
+    # new = normalize_tagname(new)
+    # old = normalize_tagname(old)
     newvals = parser.context.getall(new)
     oldvals = _traverse_context(parser, old)
 
@@ -454,7 +456,8 @@ def func_copymerge(parser, new, old, keep_duplicates=False):
     elif isinstance(newvals, dict) and isinstance(oldvals, dict):
         parser.context[new] = oldvals | newvals
     else:
-        raise ScriptRuntimeError(parser._function_stack.get(), f"Unsupported types for $copymerge: {type(newvals)}, {type(oldvals)}.")
+        raise ScriptRuntimeError(parser._function_stack.get(),
+                                 f"Unsupported types for $copymerge: {type(newvals)}, {type(oldvals)}.")
     return ''
 
 
@@ -968,7 +971,7 @@ def _delete_prefix(parser, text, *prefixes):
     match_ = re.match(rx, text)
     if match_:
         pref = match_.group()
-        return text[len(pref) :], pref.strip()
+        return text[len(pref):], pref.strip()
     return text, ''
 
 
@@ -1509,7 +1512,9 @@ def func_is_multi(parser, multi):
     eval_args=True,
     signature=N_("$cleanmulti(name)"),
     documentation=N_(
-        """Removes all empty elements from the multi-value/list variable.
+        """Argument `name` is interpreted as a variable name.
+        
+        Removes all empty elements from the multi-value/list variable.
         If the variable is a dict, removes all elements with empty value.
 
 Example:
@@ -1522,8 +1527,8 @@ Result: Sets the value of 'test' to ["one", "two", "three"].
 _Since Picard 2.8_"""
     ),
 )
-def func_cleanmulti(parser, multi):
-    name = normalize_tagname(multi)
+def func_cleanmulti(parser, name):
+    # name = normalize_tagname(multi)
     val = parser.context.getall(name)
     if isinstance(val, list):
         values = [value for value in val if value or value == 0]
@@ -1625,6 +1630,7 @@ _Since Picard 2.9_"""
 def func_max(parser, _type, x, *args):
     return _extract(max, _type, x, *args)
 
+
 # =============================
 # Extra functions for MusicSync
 # =============================
@@ -1637,7 +1643,8 @@ def _from_user_input(field):
         return int(field)
     return field
 
-def _traverse_context(parser, fields):
+
+def _traverse_context(parser, fields, copy=True):
     fields = [f for x in re.split(r'\.({.+?})\.?', fields)
               for f in ([x] if x.startswith('{') else x.split('.'))]
     for i in (0, -1):
@@ -1651,7 +1658,26 @@ def _traverse_context(parser, fields):
         assert f.endswith('}'), f'No closing brace for {f} in {fields}'
         fields[i] = {k: list(map(_from_user_input, k.split('.'))) for k in f[1:-1].split(',')}
 
-    return traverse_obj(parser.context, fields, traverse_string=True)
+    obj = traverse_obj(parser.context, fields, traverse_string=True)
+
+    if copy:
+        return obj.copy()
+
+    return obj
+
+
+@script_function(
+    signature=N_("$setvar(name, value)"),
+    documentation=N_(
+        """
+        Argument `value` is interpreted as a variable query.
+
+        Sets the variable `name` to the result of the variable query `value`."""
+    ),
+)
+def func_setvar(parser, name, value):
+    return func_set(parser, name, _traverse_context(parser, value))
+
 
 @script_function(
     signature=N_("$setlist(name, value1, *args)"),
@@ -1666,6 +1692,7 @@ def _traverse_context(parser, fields):
 def func_setlist(parser, name, *args):
     return func_set(parser, name, [_traverse_context(parser, arg) for arg in args])
 
+
 @script_function(
     signature=N_("$setdict_text(name, value[, element_separator[, kv_separator]])"),
     documentation=N_(
@@ -1677,17 +1704,20 @@ def func_setlist(parser, name, *args):
 def func_setdict_text(parser, name, value, element_separator=';', kv_separator='='):
     return func_set(parser, name, dict(v.split(kv_separator) for v in value.split(element_separator)))
 
+
 @script_function(
     signature=N_("$setdict_vars(name, key1, value1, *args"),
     documentation=N_(
         """Sets the variable `name` to a dictionary where `key1` (given as a string) is mapped to `value1` (interpreted as a variable 
-        query) etc. An arbitrary amount of key-value pairs can be specified."""
+        query), `key2` to `value2`, etc. An arbitrary amount of key-value pairs can be specified."""
     ),
 )
 def func_setdict_vars(parser, name, *args):
     if len(args) % 2 != 0:
         raise ScriptRuntimeError(parser._function_stack.get(), "Number of keys and values must be even.")
-    return func_set(parser, name, {args[i]: _traverse_context(parser, args[i+1]) for i in range(0, len(args), 2)})
+    return func_set(parser, name,
+                    {args[i]: _traverse_context(parser, args[i + 1]) for i in range(0, len(args), 2)})
+
 
 @script_function(
     signature=N_("$joinlist(name, text)"),
@@ -1720,33 +1750,52 @@ def func_joinlist(parser, name, text):
 def func_lenlist(parser, name):
     return str(len(_traverse_context(parser, name)))
 
-# @script_function(
-#     eval_args=False,
-#     signature=N_("$maplist(name,code)"),
-#     documentation=N_(
-#         """Iterates over each element in the multi-value/list/dict variable `name` and updates the
-#     value of the element to the value returned by `code`, returning the updated
-#     multi-value tag. For each loop, the element value is first stored in the tag
-#     `_loop_value` and the count is stored in the tag `_loop_count`. This allows
-#     the element or count value to be accessed within the `code` script.
-#
-# Empty elements are automatically removed.
-#
-# Example:
-#
-#     $map(First:A; Second:B,$upper(%_loop_count%=%_loop_value%))
-#
-# Result: 1=FIRST:A; 2=SECOND:B
-# """
-#     ),
-# )
-# def func_maplist(parser, multi, loop_code, separator=MULTI_VALUED_JOINER):
-#     multi_value = MultiValue(parser, multi, separator)
-#     for loop_count, value in enumerate(multi_value, 1):
-#         func_set(parser, '_loop_count', str(loop_count))
-#         func_set(parser, '_loop_value', str(value))
-#         # Make changes in-place
-#         multi_value[loop_count - 1] = str(loop_code.eval(parser))
-#     func_unset(parser, '_loop_count')
-#     func_unset(parser, '_loop_value')
-#     return str(multi_value)
+
+@script_function(
+    eval_args=False,
+    signature=N_("$maplist(name,code[,new])"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable query, `new` is interpreted as a variable name.
+        
+        Iterates over each element in the multi-value/list/dict variable `name` and updates the
+    value of the element to the value returned by `code`, saving the resulting object in the variable `new`. If `new` is not 
+    given, `name` is modified in-place instead. Note that in-place modification does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+     For each loop, the element value is first stored in the variable
+    `_loop_value` and the count is stored in the variable `_loop_count` (counting is done 1-based, as in picard's `$map`). For dictionaries, the element key is stored in the variable `_loop_key`. This allows
+    the element or count value to be accessed within the `code` script.
+
+Empty elements are **not** automatically removed.
+
+"""
+    ),
+)
+def func_maplist(parser, name, loop_code, new=None):
+    name = name.eval(parser)
+
+    if new is None:
+        val = _traverse_context(parser, name, copy=False)
+    else:
+        val = _traverse_context(parser, name)
+        new = new.eval(parser)
+
+    if isinstance(val, str):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or dict.")
+
+    for loop_count, value in enumerate(val, 1):
+        func_set(parser, '_loop_count', str(loop_count))
+
+        if isinstance(val, dict):
+            func_set(parser, '_loop_key', str(value))
+            func_set(parser, '_loop_value', str(val[value]))
+            val[value] = str(loop_code.eval(parser))
+        else:
+            func_set(parser, '_loop_value', str(value))
+            val[loop_count - 1] = str(loop_code.eval(parser))
+    func_unset(parser, '_loop_count')
+    func_unset(parser, '_loop_value')
+    func_unset(parser, '_loop_key')
+
+    if new is not None:
+        func_set(parser, new, val)
+
+    return ''

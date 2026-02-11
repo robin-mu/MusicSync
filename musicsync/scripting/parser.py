@@ -128,10 +128,10 @@ class ScriptRawText(str):
         return self
 
 
-def normalize_tagname(name):
-    if name.startswith('_'):
-        return '~' + name[1:]
-    return name
+# def normalize_tagname(name):
+#     if name.startswith('_'):
+#         return '~' + name[1:]
+#     return name
 
 
 class ScriptVariable:
@@ -459,7 +459,7 @@ class MultiValue(MutableSequence):
             self.separator = separator
         if self.separator == MULTI_VALUED_JOINER and len(multi) == 1 and isinstance(multi[0], ScriptVariable):
             # Convert ScriptExpression containing only a single variable into variable
-            self._multi = self.parser.context.getall(normalize_tagname(multi[0].name))
+            self._multi = self.parser.context.getall(multi[0].name)
         else:
             # Fall-back to converting to a string and splitting if haystack is an expression
             # or user has overridden the separator character.
