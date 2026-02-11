@@ -1509,7 +1509,8 @@ def func_is_multi(parser, multi):
     eval_args=True,
     signature=N_("$cleanmulti(name)"),
     documentation=N_(
-        """Removes all empty string elements from the multi-value variable.
+        """Removes all empty elements from the multi-value/list variable.
+        If the variable is a dict, removes all elements with empty value.
 
 Example:
 
@@ -1523,7 +1524,11 @@ _Since Picard 2.8_"""
 )
 def func_cleanmulti(parser, multi):
     name = normalize_tagname(multi)
-    values = [str(value) for value in parser.context.getall(name) if value or value == 0]
+    val = parser.context.getall(name)
+    if isinstance(val, list):
+        values = [value for value in val if value or value == 0]
+    elif isinstance(val, dict):
+        values = {k: v for k, v in val.items() if v or v == 0}
     parser.context[name] = values
     return ''
 
@@ -1683,3 +1688,65 @@ def func_setdict_vars(parser, name, *args):
     if len(args) % 2 != 0:
         raise ScriptRuntimeError(parser._function_stack.get(), "Number of keys and values must be even.")
     return func_set(parser, name, {args[i]: _traverse_context(parser, args[i+1]) for i in range(0, len(args), 2)})
+
+@script_function(
+    signature=N_("$joinlist(name, text)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable query.
+        
+        Join all elements in the multi-value/list/dict variable `name` into one string, placing `text` between each element.
+        If the variable is a dict, its values are joined."""
+    ),
+)
+def func_joinlist(parser, name, text):
+    var = _traverse_context(parser, name)
+    if isinstance(var, dict):
+        var = list(var.values())
+
+    if not isinstance(var, list):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or dict.")
+
+    return text.join(map(str, var))
+
+
+@script_function(
+    signature=N_("$lenlist(name)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable query.
+
+        Returns the number of elements in the multi-value/list/dict variable `name`"""
+    ),
+)
+def func_lenlist(parser, name):
+    return str(len(_traverse_context(parser, name)))
+
+# @script_function(
+#     eval_args=False,
+#     signature=N_("$maplist(name,code)"),
+#     documentation=N_(
+#         """Iterates over each element in the multi-value/list/dict variable `name` and updates the
+#     value of the element to the value returned by `code`, returning the updated
+#     multi-value tag. For each loop, the element value is first stored in the tag
+#     `_loop_value` and the count is stored in the tag `_loop_count`. This allows
+#     the element or count value to be accessed within the `code` script.
+#
+# Empty elements are automatically removed.
+#
+# Example:
+#
+#     $map(First:A; Second:B,$upper(%_loop_count%=%_loop_value%))
+#
+# Result: 1=FIRST:A; 2=SECOND:B
+# """
+#     ),
+# )
+# def func_maplist(parser, multi, loop_code, separator=MULTI_VALUED_JOINER):
+#     multi_value = MultiValue(parser, multi, separator)
+#     for loop_count, value in enumerate(multi_value, 1):
+#         func_set(parser, '_loop_count', str(loop_count))
+#         func_set(parser, '_loop_value', str(value))
+#         # Make changes in-place
+#         multi_value[loop_count - 1] = str(loop_code.eval(parser))
+#     func_unset(parser, '_loop_count')
+#     func_unset(parser, '_loop_value')
+#     return str(multi_value)
