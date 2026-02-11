@@ -439,13 +439,3 @@ def titlecase(text):
             capital = False
         capitalized += t
     return capitalized
-
-
-def iter_unique(seq):
-    """Creates an iterator only returning unique values from seq"""
-    seen = set()
-    return (x for x in seq if x not in seen and not seen.add(x))
-
-def uniqify(seq):
-    """Uniqify a list, preserving order"""
-    return list(iter_unique(seq))

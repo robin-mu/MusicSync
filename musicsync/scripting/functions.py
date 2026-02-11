@@ -59,8 +59,7 @@ from musicsync.scripting.util import (
     N_,
     gettext_countries,
     pattern_as_regex,
-    titlecase,
-    uniqify
+    titlecase
 )
 
 
@@ -419,42 +418,65 @@ def func_copy(parser, new, old):
     parser.context[new] = _traverse_context(parser, old)
     return ''
 
+def _uniqify_inplace(l: list):
+    new_copy = l.copy()
+    l.clear()
+    for val in new_copy:
+        if val not in l:
+            l.append(val)
+
+
 
 @script_function(
-    signature=N_("$copymerge(new,old[,keep_duplicates])"),
+    signature=N_("$copymerge(new,old[,duplicates])"),
     documentation=N_(
-        """Argument `new` is interpreted as a variable name, `old` is interpreted as a variable query.
-        If `old` and `new` are both lists or both dicts, they will be merged as expected. 
-        If `new` is a string and `old` is a list or vice versa, the string will be prepended to the list if `new` is a string or appended if `old` is a string, and the resulting list will be saved to `new`.
-        If both are a string, they will be merged into a list.
+        """Argument `new` and `old` are interpreted as a variable query.
+        If `old` and `new` are both lists or both dicts, they will be merged as expected.
+        If `new` is a list and `old` is a string, `old` will be appended to `new`.
         All other argument type combinations will result in an error.
-        `keep_duplicates` will not have an effect if both arguments are dictionaries, as dictionaries can't hold duplicates by definition.        
+        For lists or list/string: If `duplicates` is set, then duplicates will not be removed from the result.
+        For dicts: If `duplicates` is set, values from `old` will overwrite those in `new` if a key is present in both dictionaries.
         
         Merges metadata from variable `old` into `new`, removing duplicates and
     appending to the end, so retaining the original ordering. Like `$copy`, this
     will also copy multi-valued variables without flattening them.
 
-If `keep_duplicates` is set, then the duplicates will not be removed from the result.
 
 _Since Picard 1.0_"""
     ),
 )
-def func_copymerge(parser, new, old, keep_duplicates=False):
+def func_copymerge(parser, new, old, duplicates=False):
     # new = normalize_tagname(new)
     # old = normalize_tagname(old)
-    newvals = parser.context.getall(new)
+    newvals = _traverse_context(parser, new)
     oldvals = _traverse_context(parser, old)
 
     if isinstance(newvals, str):
-        newvals = [newvals]
+        raise ScriptRuntimeError(parser._function_stack.get(), 'new can not be a string.')
 
-    if isinstance(oldvals, str):
-        oldvals = [oldvals]
+    if isinstance(newvals, list) and isinstance(oldvals, str):
+        if duplicates:
+            newvals.append(oldvals)
+        else:
+            _uniqify_inplace(newvals)
 
-    if isinstance(newvals, list) and isinstance(oldvals, list):
-        parser.context[new] = newvals + oldvals if keep_duplicates else uniqify(newvals + oldvals)
+            if oldvals not in newvals:
+                newvals.append(oldvals)
+    elif isinstance(newvals, list) and isinstance(oldvals, list):
+        if duplicates:
+            newvals.extend(oldvals)
+        else:
+            _uniqify_inplace(newvals)
+
+            for val in oldvals:
+                if val not in newvals:
+                    newvals.append(val)
     elif isinstance(newvals, dict) and isinstance(oldvals, dict):
-        parser.context[new] = oldvals | newvals
+        if duplicates:
+            newvals.update(oldvals)
+        for k, v in oldvals.items():
+            if k not in newvals:
+                newvals[k] = v
     else:
         raise ScriptRuntimeError(parser._function_stack.get(),
                                  f"Unsupported types for $copymerge: {type(newvals)}, {type(oldvals)}.")
@@ -1512,7 +1534,7 @@ def func_is_multi(parser, multi):
     eval_args=True,
     signature=N_("$cleanmulti(name)"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable name.
+        """Argument `name` is interpreted as a variable query.
         
         Removes all empty elements from the multi-value/list variable.
         If the variable is a dict, removes all elements with empty value.
@@ -1529,12 +1551,16 @@ _Since Picard 2.8_"""
 )
 def func_cleanmulti(parser, name):
     # name = normalize_tagname(multi)
-    val = parser.context.getall(name)
-    if isinstance(val, list):
-        values = [value for value in val if value or value == 0]
-    elif isinstance(val, dict):
-        values = {k: v for k, v in val.items() if v or v == 0}
-    parser.context[name] = values
+    val = _traverse_context(parser, name, copy=False)
+    if isinstance(val, dict):
+        for k, v in list(val.items()):
+            if not v and v != 0:
+                val.pop(k)
+    elif isinstance(val, list):
+        for el in val.copy():
+            if not el and el != 0:
+                val.remove(el)
+
     return ''
 
 
@@ -1718,6 +1744,28 @@ def func_setdict_vars(parser, name, *args):
     return func_set(parser, name,
                     {args[i]: _traverse_context(parser, args[i + 1]) for i in range(0, len(args), 2)})
 
+@script_function(
+    signature=N_("$is_list(name)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable query.
+        
+        Returns '1' if the argument is a list/multi-value variable, otherwise an empty string."""
+    ),
+)
+def func_is_list(parser, name):
+    return '1' if isinstance(_traverse_context(parser, name), list) else ''
+
+
+@script_function(
+    signature=N_("$is_dict(name)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable query.
+
+        Returns '1' if the argument is a dict variable, otherwise an empty string."""
+    ),
+)
+def func_is_list(parser, name):
+    return '1' if isinstance(_traverse_context(parser, name), dict) else ''
 
 @script_function(
     signature=N_("$joinlist(name, text)"),
