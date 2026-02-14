@@ -418,12 +418,16 @@ def func_copy(parser, new, old):
     parser.context[new] = _traverse_context(parser, old)
     return ''
 
-def _uniqify_inplace(l: list):
+def _uniqify_inplace(parser, l: list, ignore_case=False):
     new_copy = l.copy()
     l.clear()
+    l_lower = []
     for val in new_copy:
-        if val not in l:
+        if ignore_case and not isinstance(val, str):
+            raise ScriptRuntimeError(parser._function_stack.get(), 'List elements have to be strings for case-insensitive comparisons')
+        if val not in l and (not ignore_case or val.lower() not in l_lower):
             l.append(val)
+            l_lower.append(val.lower())
 
 
 
@@ -458,7 +462,7 @@ def func_copymerge(parser, new, old, duplicates=False):
         if duplicates:
             newvals.append(oldvals)
         else:
-            _uniqify_inplace(newvals)
+            _uniqify_inplace(parser, newvals)
 
             if oldvals not in newvals:
                 newvals.append(oldvals)
@@ -466,7 +470,7 @@ def func_copymerge(parser, new, old, duplicates=False):
         if duplicates:
             newvals.extend(oldvals)
         else:
-            _uniqify_inplace(newvals)
+            _uniqify_inplace(parser, newvals)
 
             for val in oldvals:
                 if val not in newvals:
@@ -1734,7 +1738,7 @@ def func_setdict_text(parser, name, value, element_separator=';', kv_separator='
 @script_function(
     signature=N_("$setdict_vars(name, key1, value1, *args"),
     documentation=N_(
-        """Sets the variable `name` to a dictionary where `key1` (given as a string) is mapped to `value1` (interpreted as a variable 
+        """Sets the variable `name` to a dictionary where `key1` (interpreted as a string) is mapped to `value1` (interpreted as a variable 
         query), `key2` to `value2`, etc. An arbitrary amount of key-value pairs can be specified."""
     ),
 )
@@ -1764,7 +1768,7 @@ def func_is_list(parser, name):
         Returns '1' if the argument is a dict variable, otherwise an empty string."""
     ),
 )
-def func_is_list(parser, name):
+def func_is_dict(parser, name):
     return '1' if isinstance(_traverse_context(parser, name), dict) else ''
 
 @script_function(
@@ -1803,7 +1807,7 @@ def func_lenlist(parser, name):
     eval_args=False,
     signature=N_("$maplist(name,code[,new])"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query, `new` is interpreted as a variable name.
+        """Argument `name` is interpreted as a variable query.
         
         Iterates over each element in the multi-value/list/dict variable `name` and updates the
     value of the element to the value returned by `code`, saving the resulting object in the variable `new`. If `new` is not 
@@ -1845,5 +1849,58 @@ def func_maplist(parser, name, loop_code, new=None):
 
     if new is not None:
         func_set(parser, new, val)
+
+    return ''
+
+@script_function(
+    signature=N_("$sortlist(name[, new])"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable query.
+        
+        Sorts the elements of the list variable `name` in ascending order, saving the resulting object in the variable `new`. 
+        If `new` is not given, `name` is sorted in-place instead. Note that in-place sorting does not work if `name` uses list slicing.
+"""
+    ),
+)
+def func_sortlist(parser, name, new=None):
+    if new is None:
+        val = _traverse_context(parser, name, copy=False)
+    else:
+        val = _traverse_context(parser, name)
+
+    if not isinstance(val, list):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")
+
+    val.sort()
+    if new is not None:
+        parser.context[new] = val
+
+    return ''
+
+@script_function(
+    signature=N_("$uniquelist(name[,case_sensitive[,new]])"),
+    documentation=N_(
+        """Argument `name` is evaluated as a variable query.
+        
+        Removes duplicate elements in the list `name`, saving the resulting object in the variable `new`. 
+        If `new` is not given, `name` is modified in-place instead. Note that in-place modification does not work if `name` uses list slicing.
+    By default, a case-insensitive comparison of the elements is performed. If the argument `case_sensitive` is not empty, a case-sensitive comparison is performed instead.
+    (To perform case-insensitive comparison but write to a new variable, you have to leave `case_sensitive` empty like `$uniquelist(name,,new)`)
+"""
+    ),
+)
+def func_uniquelist(parser, name, case_sensitive="", new=None):
+    if new is None:
+        vals = _traverse_context(parser, name, copy=False)
+    else:
+        vals = _traverse_context(parser, name)
+
+    if not isinstance(vals, list):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")
+
+    _uniqify_inplace(parser, vals, case_sensitive == '')
+
+    if new is not None:
+        parser.context[new] = vals
 
     return ''
