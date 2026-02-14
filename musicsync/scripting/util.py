@@ -472,7 +472,7 @@ def traverse_context(parser, fields, copy=True):
 
     obj = traverse_obj(parser.context, fields, traverse_string=True)
 
-    if copy:
+    if copy and hasattr(obj, 'copy'):
         obj = obj.copy()
 
     return obj
