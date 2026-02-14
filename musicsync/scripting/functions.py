@@ -404,7 +404,7 @@ def func_get(parser, name):
     signature=N_("$copy(new,old)"),
     documentation=N_(
         """
-        Argument `old` is interpreted as a variable query.
+        Argument `old` is interpreted as a variable name.
         
         Copies metadata from variable `old` to `new`.
 The difference between `$set(new,%old%)` is that `$copy(new,old)` copies
@@ -435,7 +435,7 @@ def _uniqify_inplace(parser, l: list, ignore_case=False):
 @script_function(
     signature=N_("$copymerge(new,old[,duplicates])"),
     documentation=N_(
-        """Argument `new` and `old` are interpreted as a variable query.
+        """Argument `new` and `old` are interpreted as a variable name.
         If `old` and `new` are both lists or both dicts, they will be merged as expected.
         If `new` is a list and `old` is a string, `old` will be appended to `new`.
         All other argument type combinations will result in an error.
@@ -1539,7 +1539,7 @@ def func_is_multi(parser, multi):
     eval_args=True,
     signature=N_("$cleanmulti(name)"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
         
         Removes all empty elements from the multi-value/list variable.
         If the variable is a dict, removes all elements with empty value.
@@ -1669,9 +1669,9 @@ def func_max(parser, _type, x, *args):
     signature=N_("$setvar(name, value)"),
     documentation=N_(
         """
-        Argument `value` is interpreted as a variable query.
+        Argument `value` is interpreted as a variable name.
 
-        Sets the variable `name` to the result of the variable query `value`."""
+        Sets the variable `name` to the value of the variable `value`."""
     ),
 )
 def func_setvar(parser, name, value):
@@ -1679,17 +1679,19 @@ def func_setvar(parser, name, value):
 
 
 @script_function(
+    eval_args=False,
     signature=N_("$setlist(name, value1, *args)"),
     documentation=N_(
         """
-        All arguments after `name` are interpreted as variable queries.
+        All arguments after `name` can be interpreted as variable names *if requested*.
         
         Sets the variable `name` to a list variable 
-        containing the values of all given other variables. Multi-value variables are saved as lists"""
+        containing the values of all given other values. Multi-value variables are saved as lists"""
     ),
 )
 def func_setlist(parser, name, *args):
-    return func_set(parser, name, [traverse_context(parser, arg) for arg in args])
+    name = name.eval(parser)
+    return func_set(parser, name, [arg.eval_unpack(parser, only_if_requested=True) for arg in args])
 
 
 @script_function(
@@ -1720,7 +1722,7 @@ def func_setdict_vars(parser, name, *args):
 @script_function(
     signature=N_("$is_list(name)"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
         
         Returns '1' if the argument is a list/multi-value variable, otherwise an empty string."""
     ),
@@ -1732,7 +1734,7 @@ def func_is_list(parser, name):
 @script_function(
     signature=N_("$is_dict(name)"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
 
         Returns '1' if the argument is a dict variable, otherwise an empty string."""
     ),
@@ -1743,7 +1745,7 @@ def func_is_dict(parser, name):
 @script_function(
     signature=N_("$joinlist(name, text)"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
         
         Join all elements in the multi-value/list/dict variable `name` into one string, placing `text` between each element.
         If the variable is a dict, its values are joined."""
@@ -1763,7 +1765,7 @@ def func_joinlist(parser, name, text):
 @script_function(
     signature=N_("$lenlist(name)"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
 
         Returns the number of elements in the multi-value/list/dict variable `name`"""
     ),
@@ -1776,7 +1778,7 @@ def func_lenlist(parser, name):
     eval_args=False,
     signature=N_("$maplist(name,code[,new])"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
         
         Iterates over each element in the multi-value/list/dict variable `name` and updates the
     value of the element to the value returned by `code`, saving the resulting object in the variable `new`. If `new` is not 
@@ -1824,7 +1826,7 @@ def func_maplist(parser, name, loop_code, new=None):
 @script_function(
     signature=N_("$sortlist(name[, new])"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable query.
+        """Argument `name` is interpreted as a variable name.
         
         Sorts the elements of the list variable `name` in ascending order, saving the resulting object in the variable `new`. 
         If `new` is not given, `name` is sorted in-place instead. Note that in-place sorting does not work if `name` uses list slicing.
@@ -1849,7 +1851,7 @@ def func_sortlist(parser, name, new=None):
 @script_function(
     signature=N_("$uniquelist(name[,case_sensitive[,new]])"),
     documentation=N_(
-        """Argument `name` is evaluated as a variable query.
+        """Argument `name` is evaluated as a variable name.
         
         Removes duplicate elements in the list `name`, saving the resulting object in the variable `new`. 
         If `new` is not given, `name` is modified in-place instead. Note that in-place modification does not work if `name` uses list slicing.

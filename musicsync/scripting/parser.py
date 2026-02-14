@@ -233,12 +233,19 @@ class ScriptExpression(list):
 
         return "".join(item.eval(state) for item in self)
 
-    def eval_unpack(self, state, copy=True):
+    def eval_unpack(self, state, only_if_requested=False, copy=True):
+        res = ''
         for item in self:
+            # if unpacking is explicitly requested, it will be handled here
             if isinstance(item, ScriptVariableUnpacker):
                 return item.eval_unpack(state, copy)
+            res += item.eval(state)
 
-        return ''
+        # if unpacking is not explicitly requested, it will only take place if the function allows it (i.e. only_if_requested is False)
+        if only_if_requested:
+            return res
+
+        return traverse_context(state, res, copy)
 
 class ScriptLineBreak(str):
     def __new__(cls, *args, **kwargs):
