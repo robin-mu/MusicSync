@@ -59,7 +59,8 @@ from musicsync.scripting.util import (
     N_,
     gettext_countries,
     pattern_as_regex,
-    titlecase
+    titlecase,
+    traverse_context
 )
 
 
@@ -415,7 +416,7 @@ _Since Picard 0.9_"""
 def func_copy(parser, new, old):
     # new = normalize_tagname(new)
     # old = normalize_tagname(old)
-    parser.context[new] = _traverse_context(parser, old)
+    parser.context[new] = traverse_context(parser, old)
     return ''
 
 def _uniqify_inplace(parser, l: list, ignore_case=False):
@@ -452,8 +453,8 @@ _Since Picard 1.0_"""
 def func_copymerge(parser, new, old, duplicates=False):
     # new = normalize_tagname(new)
     # old = normalize_tagname(old)
-    newvals = _traverse_context(parser, new)
-    oldvals = _traverse_context(parser, old)
+    newvals = traverse_context(parser, new)
+    oldvals = traverse_context(parser, old)
 
     if isinstance(newvals, str):
         raise ScriptRuntimeError(parser._function_stack.get(), 'new can not be a string.')
@@ -1555,7 +1556,7 @@ _Since Picard 2.8_"""
 )
 def func_cleanmulti(parser, name):
     # name = normalize_tagname(multi)
-    val = _traverse_context(parser, name, copy=False)
+    val = traverse_context(parser, name, copy=False)
     if isinstance(val, dict):
         for k, v in list(val.items()):
             if not v and v != 0:
@@ -1664,38 +1665,6 @@ def func_max(parser, _type, x, *args):
 # =============================
 # Extra functions for MusicSync
 # =============================
-def _from_user_input(field):
-    if field == ':':
-        return ...
-    elif ':' in field:
-        return slice(*map(int_or_none, field.split(':')))
-    elif int_or_none(field) is not None:
-        return int(field)
-    return field
-
-
-def _traverse_context(parser, fields, copy=True):
-    fields = [f for x in re.split(r'\.({.+?})\.?', fields)
-              for f in ([x] if x.startswith('{') else x.split('.'))]
-    for i in (0, -1):
-        if fields and not fields[i]:
-            fields.pop(i)
-
-    for i, f in enumerate(fields):
-        if not f.startswith('{'):
-            fields[i] = _from_user_input(f)
-            continue
-        assert f.endswith('}'), f'No closing brace for {f} in {fields}'
-        fields[i] = {k: list(map(_from_user_input, k.split('.'))) for k in f[1:-1].split(',')}
-
-    obj = traverse_obj(parser.context, fields, traverse_string=True)
-
-    if copy:
-        return obj.copy()
-
-    return obj
-
-
 @script_function(
     signature=N_("$setvar(name, value)"),
     documentation=N_(
@@ -1706,7 +1675,7 @@ def _traverse_context(parser, fields, copy=True):
     ),
 )
 def func_setvar(parser, name, value):
-    return func_set(parser, name, _traverse_context(parser, value))
+    return func_set(parser, name, traverse_context(parser, value))
 
 
 @script_function(
@@ -1720,7 +1689,7 @@ def func_setvar(parser, name, value):
     ),
 )
 def func_setlist(parser, name, *args):
-    return func_set(parser, name, [_traverse_context(parser, arg) for arg in args])
+    return func_set(parser, name, [traverse_context(parser, arg) for arg in args])
 
 
 @script_function(
@@ -1746,7 +1715,7 @@ def func_setdict_vars(parser, name, *args):
     if len(args) % 2 != 0:
         raise ScriptRuntimeError(parser._function_stack.get(), "Number of keys and values must be even.")
     return func_set(parser, name,
-                    {args[i]: _traverse_context(parser, args[i + 1]) for i in range(0, len(args), 2)})
+                    {args[i]: traverse_context(parser, args[i + 1]) for i in range(0, len(args), 2)})
 
 @script_function(
     signature=N_("$is_list(name)"),
@@ -1757,7 +1726,7 @@ def func_setdict_vars(parser, name, *args):
     ),
 )
 def func_is_list(parser, name):
-    return '1' if isinstance(_traverse_context(parser, name), list) else ''
+    return '1' if isinstance(traverse_context(parser, name), list) else ''
 
 
 @script_function(
@@ -1769,7 +1738,7 @@ def func_is_list(parser, name):
     ),
 )
 def func_is_dict(parser, name):
-    return '1' if isinstance(_traverse_context(parser, name), dict) else ''
+    return '1' if isinstance(traverse_context(parser, name), dict) else ''
 
 @script_function(
     signature=N_("$joinlist(name, text)"),
@@ -1781,7 +1750,7 @@ def func_is_dict(parser, name):
     ),
 )
 def func_joinlist(parser, name, text):
-    var = _traverse_context(parser, name)
+    var = traverse_context(parser, name)
     if isinstance(var, dict):
         var = list(var.values())
 
@@ -1800,7 +1769,7 @@ def func_joinlist(parser, name, text):
     ),
 )
 def func_lenlist(parser, name):
-    return str(len(_traverse_context(parser, name)))
+    return str(len(traverse_context(parser, name)))
 
 
 @script_function(
@@ -1825,9 +1794,9 @@ def func_maplist(parser, name, loop_code, new=None):
     name = name.eval(parser)
 
     if new is None:
-        val = _traverse_context(parser, name, copy=False)
+        val = traverse_context(parser, name, copy=False)
     else:
-        val = _traverse_context(parser, name)
+        val = traverse_context(parser, name)
         new = new.eval(parser)
 
     if isinstance(val, str):
@@ -1864,9 +1833,9 @@ def func_maplist(parser, name, loop_code, new=None):
 )
 def func_sortlist(parser, name, new=None):
     if new is None:
-        val = _traverse_context(parser, name, copy=False)
+        val = traverse_context(parser, name, copy=False)
     else:
-        val = _traverse_context(parser, name)
+        val = traverse_context(parser, name)
 
     if not isinstance(val, list):
         raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")
@@ -1891,9 +1860,9 @@ def func_sortlist(parser, name, new=None):
 )
 def func_uniquelist(parser, name, case_sensitive="", new=None):
     if new is None:
-        vals = _traverse_context(parser, name, copy=False)
+        vals = traverse_context(parser, name, copy=False)
     else:
-        vals = _traverse_context(parser, name)
+        vals = traverse_context(parser, name)
 
     if not isinstance(vals, list):
         raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")
