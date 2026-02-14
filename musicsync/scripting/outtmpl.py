@@ -78,7 +78,7 @@ def prepare_outtmpl(outtmpl, info_dict, params=None, sanitize=False):
     }
 
     TMPL_DICT = {}
-    EXTERNAL_FORMAT_RE = re.compile(STR_FORMAT_RE_TMPL.format('[^)]*', f'[{STR_FORMAT_TYPES}ljhqBUDS]'))
+    EXTERNAL_FORMAT_RE = re.compile(STR_FORMAT_RE_TMPL.format('[^)]*', f'[{STR_FORMAT_TYPES}ljhqBUDSm]'))
     MATH_FUNCTIONS = {
         '+': float.__add__,
         '-': float.__sub__,
@@ -233,6 +233,9 @@ def prepare_outtmpl(outtmpl, info_dict, params=None, sanitize=False):
             value, fmt = default, 's'
         elif fmt[-1] == 'l':  # list
             delim = '\n' if '#' in flags else ', '
+            value, fmt = delim.join(map(str, variadic(value, allowed_types=(str, bytes)))), str_fmt
+        elif fmt[-1] == 'm':  # musicbrainz picard multi-value variable (i.e. semicolon-separated list)
+            delim = '; '
             value, fmt = delim.join(map(str, variadic(value, allowed_types=(str, bytes)))), str_fmt
         elif fmt[-1] == 'j':  # json
             value, fmt = json.dumps(

@@ -327,7 +327,7 @@ class ScriptParser:
             ch = self.read()
             if ch == ')':
                 in_query = False
-            elif not in_query and ch in STR_FORMAT_TYPES + 'BjhlqDSU':
+            elif not in_query and ch in STR_FORMAT_TYPES + 'BjhlqDSUm':
                 return ScriptVariable(self._text[begin : self._pos])
             elif ch is None:
                 self.__raise_eof()
@@ -353,19 +353,19 @@ class ScriptParser:
             elif ch == '#':
                 self.parse_comment()
             elif ch == '"':
-                tokens.append(ScriptText(text.strip()))
+                tokens.append(ScriptText(text))
                 tokens.append(self.parse_raw_text())
                 text = ''
             elif ch == '\n':
                 if top:
-                    tokens.append(ScriptText(text.strip()))
+                    tokens.append(ScriptText(text))
                     tokens.append(ScriptLineBreak())
                     text = ''
             else:
                 text += ch
 
         if text:
-            tokens.append(ScriptText(text.strip()))
+            tokens.append(ScriptText(text))
 
         return tokens
 
@@ -415,8 +415,26 @@ class ScriptParser:
                 tokens.append(ScriptLineBreak())
             else:
                 self.unread()
-                for token in self.parse_text(top):
-                    tokens.append(token)
+                tokens.extend(self.parse_text(top))
+
+        # remove whitespace before and after line breaks and at the beginning and end of the script
+        if top:
+            for i, token in enumerate(tokens):
+                if i == 0 and isinstance(token, ScriptText):
+                    tokens[0] = ScriptText(token.lstrip())
+                elif i == len(tokens) - 1 and isinstance(token, ScriptText):
+                    tokens[-1] = ScriptText(token.rstrip())
+                elif isinstance(token, ScriptLineBreak):
+                    if i > 0 and isinstance(tokens[i-1], ScriptText):
+                        tokens[i-1] = ScriptText(tokens[i-1].rstrip())
+                    if i < len(tokens) - 1 and isinstance(tokens[i+1], ScriptText):
+                        tokens[i+1] = ScriptText(tokens[i+1].lstrip())
+        else:
+            if isinstance(tokens[0], ScriptText):
+                tokens[0] = ScriptText(tokens[0].lstrip())
+            if isinstance(tokens[-1], ScriptText):
+                tokens[-1] = ScriptText(tokens[-1].rstrip())
+
         return tokens, ch
 
     def parse_comment(self):
@@ -457,19 +475,19 @@ class MultiValue(MutableSequence):
             self.separator = separator.eval(self.parser)
         else:
             self.separator = separator
-        if self.separator == MULTI_VALUED_JOINER and len(multi) == 1 and isinstance(multi[0], ScriptVariable):
+        # if self.separator == MULTI_VALUED_JOINER and len(multi) == 1 and isinstance(multi[0], ScriptVariable):
             # Convert ScriptExpression containing only a single variable into variable
-            self._multi = self.parser.context.getall(multi[0].name)
+            # self._multi = self.parser.context.getall(multi[0].name)
+        # else:
+        # Fall-back to converting to a string and splitting if haystack is an expression
+        # or user has overridden the separator character.
+        evaluated_multi = multi.eval(self.parser)
+        if not evaluated_multi:
+            self._multi = []
+        elif self.separator:
+            self._multi = evaluated_multi.split(self.separator)
         else:
-            # Fall-back to converting to a string and splitting if haystack is an expression
-            # or user has overridden the separator character.
-            evaluated_multi = multi.eval(self.parser)
-            if not evaluated_multi:
-                self._multi = []
-            elif self.separator:
-                self._multi = evaluated_multi.split(self.separator)
-            else:
-                self._multi = [evaluated_multi]
+            self._multi = [evaluated_multi]
 
     def __len__(self):
         return len(self._multi)
