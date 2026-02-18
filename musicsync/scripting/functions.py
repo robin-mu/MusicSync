@@ -46,11 +46,11 @@ import re
 from collections import namedtuple
 from functools import reduce
 
-from yt_dlp.utils import int_or_none, traverse_obj
-
 from musicsync.scripting.parser import (
     MultiValue,
     ScriptRuntimeError,
+    ScriptExpression,
+    ScriptVariableUnpacker
 )
 from musicsync.scripting.script_functions import script_function
 from musicsync.scripting.util import (
@@ -352,9 +352,12 @@ def func_delete(parser, name):
 
 
 @script_function(
+    eval_args=False,
     signature=N_("$set(name,value)"),
     documentation=N_(
-        """Sets the variable `name` to `value`.
+        """Argument `value` is interpreted as a variable name *if requested*.
+        
+        Sets the variable `name` to `value`.
 
 Note: To create a variable which can be used for the file naming string, but
     which will not be written as a tag in the file, prefix the variable name
@@ -363,6 +366,11 @@ Note: To create a variable which can be used for the file naming string, but
     ),
 )
 def func_set(parser, name, value):
+    if isinstance(name, ScriptExpression):
+        name = name.eval(parser)
+
+    value = _unpack_if_requested(parser, value)
+
     if value:
         # parser.context[normalize_tagname(name)] = value
         parser.context[name] = value
@@ -407,8 +415,8 @@ def func_get(parser, name):
         Argument `old` is interpreted as a variable name.
         
         Copies metadata from variable `old` to `new`.
-The difference between `$set(new,%old%)` is that `$copy(new,old)` copies
-    multi-value variables without flattening them.
+The difference between `$set(new,%(old)s)` is that `$copy(new,old)` copies
+    multi-value/list/dict variables without flattening them.
 
 _Since Picard 0.9_"""
     ),
@@ -416,7 +424,7 @@ _Since Picard 0.9_"""
 def func_copy(parser, new, old):
     # new = normalize_tagname(new)
     # old = normalize_tagname(old)
-    parser.context[new] = traverse_context(parser, old)
+    parser.context[new] = _evaluate_variable_name(parser, old)
     return ''
 
 def _uniqify_inplace(parser, l: list, ignore_case=False):
@@ -444,7 +452,7 @@ def _uniqify_inplace(parser, l: list, ignore_case=False):
         
         Merges metadata from variable `old` into `new`, removing duplicates and
     appending to the end, so retaining the original ordering. Like `$copy`, this
-    will also copy multi-valued variables without flattening them.
+    will also copy multi-valued/list/dict variables without flattening them.
 
 
 _Since Picard 1.0_"""
@@ -453,8 +461,8 @@ _Since Picard 1.0_"""
 def func_copymerge(parser, new, old, duplicates=False):
     # new = normalize_tagname(new)
     # old = normalize_tagname(old)
-    newvals = traverse_context(parser, new)
-    oldvals = traverse_context(parser, old)
+    newvals = _evaluate_variable_name(parser, new)
+    oldvals = _evaluate_variable_name(parser, old)
 
     if isinstance(newvals, str):
         raise ScriptRuntimeError(parser._function_stack.get(), 'new can not be a string.')
@@ -750,11 +758,16 @@ def func_gte(parser, x, y, _type=None):
 
 
 @script_function(
-    signature=N_("$len(text)"),
-    documentation=N_("Returns the number of characters in `text`."),
+    eval_args=False,
+    signature=N_("$len(value)"),
+    documentation=N_("""Argument `value` is interpreted as a variable name *if requested*.
+    
+    Returns the length of `value`. If it is a string, the length is the number of characters. If it is a list or dict, 
+    the length is the number of elements."""),
 )
-def func_len(parser, text=""):
-    return str(len(text))
+def func_len(parser, value):
+    value = _unpack_if_requested(parser, value)
+    return str(len(value))
 
 
 @script_function(
@@ -1263,11 +1276,22 @@ def func_map(parser, multi, loop_code, separator=MULTI_VALUED_JOINER):
     eval_args=False,
     signature=N_("$join(name,text[,separator=; ])"),
     documentation=N_(
-        "Joins all elements in `name`, placing `text` between each element, and returns the result as a string."
+        """Argument `name` is interpreted as a variable name *if requested*. If not requested to be a variable name, it
+        has to be a multi-value literal like "A; B; C". A different separator than "; " can be passed with the `separator` argument.
+        
+        Joins all elements in `name`, placing `text` between each element, and returns the result as a string."""
     ),
 )
 def func_join(parser, multi, join_phrase, separator=MULTI_VALUED_JOINER):
+    multi = _unpack_if_requested(parser, multi)
     join_phrase = str(join_phrase.eval(parser))
+
+    if isinstance(multi, dict):
+        multi = list(multi.values())
+
+    if isinstance(multi, list):
+        return join_phrase.join(map(str, multi))
+
     multi_value = MultiValue(parser, multi, separator)
     return join_phrase.join(multi_value)
 
@@ -1536,13 +1560,13 @@ def func_is_multi(parser, multi):
 
 
 @script_function(
-    eval_args=True,
     signature=N_("$cleanmulti(name)"),
     documentation=N_(
         """Argument `name` is interpreted as a variable name.
         
-        Removes all empty elements from the multi-value/list variable.
+        Removes all empty elements from the multi-value/list/dict variable in-place.
         If the variable is a dict, removes all elements with empty value.
+        Note that this function does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
 
 Example:
 
@@ -1556,7 +1580,7 @@ _Since Picard 2.8_"""
 )
 def func_cleanmulti(parser, name):
     # name = normalize_tagname(multi)
-    val = traverse_context(parser, name, copy=False)
+    val = _evaluate_variable_name(parser, name, copy=False)
     if isinstance(val, dict):
         for k, v in list(val.items()):
             if not v and v != 0:
@@ -1665,18 +1689,17 @@ def func_max(parser, _type, x, *args):
 # =============================
 # Extra functions for MusicSync
 # =============================
-@script_function(
-    signature=N_("$setvar(name, value)"),
-    documentation=N_(
-        """
-        Argument `value` is interpreted as a variable name.
+def _unpack_if_requested(parser, value):
+    if isinstance(value, ScriptExpression):
+        return value.eval(parser)
+    elif isinstance(value, ScriptVariableUnpacker):
+        return value.eval_unpack(parser)
 
-        Sets the variable `name` to the value of the variable `value`."""
-    ),
-)
-def func_setvar(parser, name, value):
-    return func_set(parser, name, traverse_context(parser, value))
+    return value
 
+def _evaluate_variable_name(parser, name, copy=True):
+    name = name.lstrip('*')
+    return traverse_context(parser, name, copy)
 
 @script_function(
     eval_args=False,
@@ -1691,7 +1714,7 @@ def func_setvar(parser, name, value):
 )
 def func_setlist(parser, name, *args):
     name = name.eval(parser)
-    return func_set(parser, name, [arg.eval_unpack(parser, only_if_requested=True) for arg in args])
+    return func_set(parser, name, [_unpack_if_requested(parser, arg) for arg in args])
 
 
 @script_function(
@@ -1707,17 +1730,20 @@ def func_setdict_text(parser, name, value, element_separator=';', kv_separator='
 
 
 @script_function(
+    eval_args=False,
     signature=N_("$setdict_vars(name, key1, value1, *args"),
     documentation=N_(
         """Sets the variable `name` to a dictionary where `key1` (interpreted as a string) is mapped to `value1` (interpreted as a variable 
-        query), `key2` to `value2`, etc. An arbitrary amount of key-value pairs can be specified."""
+        name *if requested*), `key2` to `value2`, etc. An arbitrary amount of key-value pairs can be specified."""
     ),
 )
 def func_setdict_vars(parser, name, *args):
+    name = name.eval(parser)
+
     if len(args) % 2 != 0:
         raise ScriptRuntimeError(parser._function_stack.get(), "Number of keys and values must be even.")
     return func_set(parser, name,
-                    {args[i]: traverse_context(parser, args[i + 1]) for i in range(0, len(args), 2)})
+                    {args[i]: _unpack_if_requested(parser, args[i + 1]) for i in range(0, len(args), 2)})
 
 @script_function(
     signature=N_("$is_list(name)"),
@@ -1728,7 +1754,7 @@ def func_setdict_vars(parser, name, *args):
     ),
 )
 def func_is_list(parser, name):
-    return '1' if isinstance(traverse_context(parser, name), list) else ''
+    return '1' if isinstance(_evaluate_variable_name(parser, name), list) else ''
 
 
 @script_function(
@@ -1740,38 +1766,7 @@ def func_is_list(parser, name):
     ),
 )
 def func_is_dict(parser, name):
-    return '1' if isinstance(traverse_context(parser, name), dict) else ''
-
-@script_function(
-    signature=N_("$joinlist(name, text)"),
-    documentation=N_(
-        """Argument `name` is interpreted as a variable name.
-        
-        Join all elements in the multi-value/list/dict variable `name` into one string, placing `text` between each element.
-        If the variable is a dict, its values are joined."""
-    ),
-)
-def func_joinlist(parser, name, text):
-    var = traverse_context(parser, name)
-    if isinstance(var, dict):
-        var = list(var.values())
-
-    if not isinstance(var, list):
-        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or dict.")
-
-    return text.join(map(str, var))
-
-
-@script_function(
-    signature=N_("$lenlist(name)"),
-    documentation=N_(
-        """Argument `name` is interpreted as a variable name.
-
-        Returns the number of elements in the multi-value/list/dict variable `name`"""
-    ),
-)
-def func_lenlist(parser, name):
-    return str(len(traverse_context(parser, name)))
+    return '1' if isinstance(_evaluate_variable_name(parser, name), dict) else ''
 
 
 @script_function(
@@ -1793,12 +1788,9 @@ Empty elements are **not** automatically removed.
     ),
 )
 def func_maplist(parser, name, loop_code, new=None):
-    name = name.eval(parser)
+    val = name.eval_unpack(parser, copy=new is not None)
 
-    if new is None:
-        val = traverse_context(parser, name, copy=False)
-    else:
-        val = traverse_context(parser, name)
+    if new is not None:
         new = new.eval(parser)
 
     if isinstance(val, str):
@@ -1834,10 +1826,7 @@ def func_maplist(parser, name, loop_code, new=None):
     ),
 )
 def func_sortlist(parser, name, new=None):
-    if new is None:
-        val = traverse_context(parser, name, copy=False)
-    else:
-        val = traverse_context(parser, name)
+    val = _evaluate_variable_name(parser, name, copy=new is not None)
 
     if not isinstance(val, list):
         raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")
@@ -1851,7 +1840,7 @@ def func_sortlist(parser, name, new=None):
 @script_function(
     signature=N_("$uniquelist(name[,case_sensitive[,new]])"),
     documentation=N_(
-        """Argument `name` is evaluated as a variable name.
+        """Argument `name` is interpreted as a variable name.
         
         Removes duplicate elements in the list `name`, saving the resulting object in the variable `new`. 
         If `new` is not given, `name` is modified in-place instead. Note that in-place modification does not work if `name` uses list slicing.
@@ -1861,10 +1850,7 @@ def func_sortlist(parser, name, new=None):
     ),
 )
 def func_uniquelist(parser, name, case_sensitive="", new=None):
-    if new is None:
-        vals = traverse_context(parser, name, copy=False)
-    else:
-        vals = traverse_context(parser, name)
+    vals = _evaluate_variable_name(parser, name, copy=new is not None)
 
     if not isinstance(vals, list):
         raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")

@@ -218,31 +218,23 @@ class ScriptExpression(list):
                 else:
                     current += item.eval(state)
 
+            if current or raw_text_seen:
+                res.append(current)
+
             return res
 
         return "".join(item.eval(state) for item in self)
 
-    def eval_unpack(self, state, only_if_requested=False, copy=True):
-        res = ''
-        for item in self:
-            # if unpacking is explicitly requested, it will be handled here
-            if isinstance(item, ScriptVariableUnpacker):
-                return item.eval_unpack(state, copy)
-            res += item.eval(state)
-
-        # if unpacking is not explicitly requested, it will only take place if the function allows it (i.e. only_if_requested is False)
-        if only_if_requested:
-            return res
-
-        return traverse_context(state, res, copy)
+    def eval_unpack(self, state, copy=True):
+        return traverse_context(state, self.eval(state), copy)
 
 
-class ScriptVariableUnpacker(ScriptExpression):
+class ScriptVariableUnpacker(list):
     def eval(self, state, _: bool=False):
-        return '*' + super().eval(state)
+        return '*' + ScriptExpression(self).eval(state)
 
-    def eval_unpack(self, state, _=True, copy=True):
-        return traverse_context(state, super().eval(state), copy)
+    def eval_unpack(self, state, copy=True):
+        return ScriptExpression(self).eval_unpack(state, copy)
 
 class ScriptLineBreak(str):
     def __new__(cls, *args, **kwargs):
@@ -367,9 +359,12 @@ class ScriptParser:
             #     self.__raise_char(ch)
 
     def parse_variable_unpacker(self, top):
-        exp, _ = self.parse_expression(top, unpacker=True)
-        self.unread()
-        return ScriptVariableUnpacker(exp)
+        exp, ch = self.parse_expression(top, unpacker=True)
+
+        if top:
+            self.unread()
+
+        return ScriptVariableUnpacker(exp), ch
 
     def parse_text(self, top, break_on_asterisk=False):
         text = ''
@@ -445,27 +440,31 @@ class ScriptParser:
                 self.parse_comment()
             elif ch == '"':
                 tokens.append(self.parse_raw_text())
-            elif ch == '*' and beginning:
-                tokens.append(self.parse_variable_unpacker(top))
+            elif ch == '*' and beginning and not unpacker:
+                if top:
+                    tokens.append(self.parse_variable_unpacker(top)[0])
+                else:
+                    return self.parse_variable_unpacker(top)
             else:
                 self.unread()
-                tokens.append(self.parse_text(top, break_on_asterisk=beginning))
+                tokens.append(self.parse_text(top, break_on_asterisk=beginning and not unpacker))
 
             if beginning and not (len(tokens) == 0 or (isinstance(tokens[-1], (ScriptText, ScriptLineBreak)) and tokens[-1].isspace())):
                 beginning = False
 
         # remove whitespace in all ScriptTexts before and after line breaks and at the beginning and end of the script/argument
-        if isinstance(tokens[0], ScriptText):
-            tokens[0] = tokens[0].__class__(tokens[0].lstrip())
-        if isinstance(tokens[-1], ScriptText):
-            tokens[-1] = tokens[-1].__class__(tokens[-1].rstrip())
-        if top:
-            for i, token in enumerate(tokens):
-                if isinstance(token, ScriptLineBreak):
-                    if i > 0 and isinstance(tokens[i-1], ScriptText):
-                        tokens[i-1] = tokens[i-1].__class__(tokens[i-1].rstrip())
-                    if i < len(tokens) - 1 and isinstance(tokens[i+1], ScriptText):
-                        tokens[i+1] = tokens[i+1].__class__(tokens[i+1].lstrip())
+        if len(tokens) > 0:
+            if not unpacker and isinstance(tokens[0], ScriptText):
+                tokens[0] = tokens[0].__class__(tokens[0].lstrip())
+            if isinstance(tokens[-1], ScriptText):
+                tokens[-1] = tokens[-1].__class__(tokens[-1].rstrip())
+            if top:
+                for i, token in enumerate(tokens):
+                    if isinstance(token, ScriptLineBreak):
+                        if i > 0 and isinstance(tokens[i-1], ScriptText):
+                            tokens[i-1] = tokens[i-1].__class__(tokens[i-1].rstrip())
+                        if i < len(tokens) - 1 and isinstance(tokens[i+1], ScriptText):
+                            tokens[i+1] = tokens[i+1].__class__(tokens[i+1].lstrip())
 
         return tokens, ch
 
@@ -513,13 +512,16 @@ class MultiValue(MutableSequence):
         # else:
         # Fall-back to converting to a string and splitting if haystack is an expression
         # or user has overridden the separator character.
-        evaluated_multi = multi.eval(self.parser)
-        if not evaluated_multi:
+
+        if isinstance(multi, ScriptExpression):
+            multi = multi.eval(self.parser)
+
+        if not multi:
             self._multi = []
         elif self.separator:
-            self._multi = evaluated_multi.split(self.separator)
+            self._multi = multi.split(self.separator)
         else:
-            self._multi = [evaluated_multi]
+            self._multi = [multi]
 
     def __len__(self):
         return len(self._multi)
