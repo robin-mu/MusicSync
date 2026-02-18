@@ -134,17 +134,6 @@ class ScriptRawText(str):
 #         return '~' + name[1:]
 #     return name
 
-class ScriptVariableUnpacker(str):
-    def eval(self, _):
-        return '*' + self
-
-    def eval_unpack(self, state, copy=True):
-        return traverse_context(state, self, copy)
-
-    def __repr__(self):
-        return "<ScriptVariableUnpacker %s>" % self
-
-
 
 class ScriptVariable:
     def __init__(self, name):
@@ -246,6 +235,14 @@ class ScriptExpression(list):
             return res
 
         return traverse_context(state, res, copy)
+
+
+class ScriptVariableUnpacker(ScriptExpression):
+    def eval(self, state, _: bool=False):
+        return '*' + super().eval(state)
+
+    def eval_unpack(self, state, _=True, copy=True):
+        return traverse_context(state, super().eval(state), copy)
 
 class ScriptLineBreak(str):
     def __new__(cls, *args, **kwargs):
@@ -370,26 +367,9 @@ class ScriptParser:
             #     self.__raise_char(ch)
 
     def parse_variable_unpacker(self, top):
-        var = ''
-        ch = self.read()
-        # if top is true, we read until a line break; if top is false, we read until a character that doesn't show up in variable names
-        if top:
-            while ch != '\n':
-                if ch is None:
-                    break
-                var += ch
-                ch = self.read()
-        else:
-            while isidentif(ch) or ch in '.-:{}\\':
-                if ch == '\\':
-                    if self._pos < len(self._text) - 1 and self._text[self._pos + 1] == ',':
-                        ch = self.read()
-                    else:
-                        break
-                var += ch
-                ch = self.read()
-            self.unread()
-        return ScriptVariableUnpacker(var)
+        exp, _ = self.parse_expression(top, unpacker=True)
+        self.unread()
+        return ScriptVariableUnpacker(exp)
 
     def parse_text(self, top, break_on_asterisk=False):
         text = ''
@@ -438,7 +418,7 @@ class ScriptParser:
         else:
             return ch
 
-    def parse_expression(self, top):
+    def parse_expression(self, top: bool, unpacker: bool=False) -> tuple[ScriptExpression, str]:
         tokens = ScriptExpression()
         beginning = True
 
@@ -456,8 +436,11 @@ class ScriptParser:
             elif ch == '%':
                 tokens.append(self.parse_variable())
             elif ch == '\n' and top:
-                tokens.append(ScriptLineBreak())
-                beginning = True
+                if unpacker:
+                    break
+                else:
+                    tokens.append(ScriptLineBreak())
+                    beginning = True
             elif ch == '#':
                 self.parse_comment()
             elif ch == '"':
@@ -471,17 +454,17 @@ class ScriptParser:
             if beginning and not (len(tokens) == 0 or (isinstance(tokens[-1], (ScriptText, ScriptLineBreak)) and tokens[-1].isspace())):
                 beginning = False
 
-        # remove whitespace in all ScriptTexts and ScriptVariableUnpackers before and after line breaks and at the beginning and end of the script/argument
-        if isinstance(tokens[0], (ScriptText, ScriptVariableUnpacker)):
+        # remove whitespace in all ScriptTexts before and after line breaks and at the beginning and end of the script/argument
+        if isinstance(tokens[0], ScriptText):
             tokens[0] = tokens[0].__class__(tokens[0].lstrip())
-        if isinstance(tokens[-1], (ScriptText, ScriptVariableUnpacker)):
+        if isinstance(tokens[-1], ScriptText):
             tokens[-1] = tokens[-1].__class__(tokens[-1].rstrip())
         if top:
             for i, token in enumerate(tokens):
                 if isinstance(token, ScriptLineBreak):
-                    if i > 0 and isinstance(tokens[i-1], (ScriptText, ScriptVariableUnpacker)):
+                    if i > 0 and isinstance(tokens[i-1], ScriptText):
                         tokens[i-1] = tokens[i-1].__class__(tokens[i-1].rstrip())
-                    if i < len(tokens) - 1 and isinstance(tokens[i+1], (ScriptText, ScriptVariableUnpacker)):
+                    if i < len(tokens) - 1 and isinstance(tokens[i+1], ScriptText):
                         tokens[i+1] = tokens[i+1].__class__(tokens[i+1].lstrip())
 
         return tokens, ch
