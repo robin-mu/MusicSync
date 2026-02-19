@@ -355,7 +355,7 @@ def func_delete(parser, name):
     eval_args=False,
     signature=N_("$set(name,value)"),
     documentation=N_(
-        """Argument `value` is interpreted as a variable name *if requested*.
+        """Argument `value` can be interpreted as a variable name *if requested*.
         
         Sets the variable `name` to `value`.
 
@@ -760,7 +760,7 @@ def func_gte(parser, x, y, _type=None):
 @script_function(
     eval_args=False,
     signature=N_("$len(value)"),
-    documentation=N_("""Argument `value` is interpreted as a variable name *if requested*.
+    documentation=N_("""Argument `value` can be interpreted as a variable name *if requested*.
     
     Returns the length of `value`. If it is a string, the length is the number of characters. If it is a list or dict, 
     the length is the number of elements."""),
@@ -1276,7 +1276,7 @@ def func_map(parser, multi, loop_code, separator=MULTI_VALUED_JOINER):
     eval_args=False,
     signature=N_("$join(name,text[,separator=; ])"),
     documentation=N_(
-        """Argument `name` is interpreted as a variable name *if requested*. If not requested to be a variable name, it
+        """Argument `name` can be interpreted as a variable name *if requested*. If not requested to be a variable name, it
         has to be a multi-value literal like "A; B; C". A different separator than "; " can be passed with the `separator` argument.
         
         Joins all elements in `name`, placing `text` between each element, and returns the result as a string."""
@@ -1771,15 +1771,14 @@ def func_is_dict(parser, name):
 
 @script_function(
     eval_args=False,
-    signature=N_("$maplist(name,code[,new])"),
+    signature=N_("$maplist(name, code[, new])"),
     documentation=N_(
         """Argument `name` is interpreted as a variable name.
         
         Iterates over each element in the multi-value/list/dict variable `name` and updates the
     value of the element to the value returned by `code`, saving the resulting object in the variable `new`. If `new` is not 
     given, `name` is modified in-place instead. Note that in-place modification does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
-     For each loop, the element value is first stored in the variable
-    `_loop_value` and the count is stored in the variable `_loop_count` (counting is done 1-based, as in picard's `$map`). For dictionaries, the element key is stored in the variable `_loop_key`. This allows
+    For each loop, the element value is first stored in the variable `_loop_value` and the count is stored in the variable `_loop_count` (counting is done 1-based, as in picard's `$map`). For dictionaries, the element key is stored in the variable `_loop_key`. This allows
     the element or count value to be accessed within the `code` script.
 
 Empty elements are **not** automatically removed.
@@ -1800,11 +1799,11 @@ def func_maplist(parser, name, loop_code, new=None):
         func_set(parser, '_loop_count', str(loop_count))
 
         if isinstance(val, dict):
-            func_set(parser, '_loop_key', str(value))
-            func_set(parser, '_loop_value', str(val[value]))
+            func_set(parser, '_loop_key', value)
+            func_set(parser, '_loop_value', val[value])
             val[value] = str(loop_code.eval(parser))
         else:
-            func_set(parser, '_loop_value', str(value))
+            func_set(parser, '_loop_value', value)
             val[loop_count - 1] = str(loop_code.eval(parser))
     func_unset(parser, '_loop_count')
     func_unset(parser, '_loop_value')
@@ -1838,7 +1837,7 @@ def func_sortlist(parser, name, new=None):
     return ''
 
 @script_function(
-    signature=N_("$uniquelist(name[,case_sensitive[,new]])"),
+    signature=N_("$uniquelist(name[, case_sensitive[, new]])"),
     documentation=N_(
         """Argument `name` is interpreted as a variable name.
         
@@ -1859,5 +1858,256 @@ def func_uniquelist(parser, name, case_sensitive="", new=None):
 
     if new is not None:
         parser.context[new] = vals
+
+    return ''
+
+
+@script_function(
+    signature=N_("$reverselist(name[, new])"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name.
+
+        Reverses the elements of the list variable `name`, saving the resulting object in the variable `new`. 
+        If `new` is not given, `name` is sorted in-place instead. Note that in-place sorting does not work if `name` uses list slicing.
+"""
+    ),
+)
+def func_reverselist(parser, name, new=None):
+    val = _evaluate_variable_name(parser, name, copy=new is not None)
+
+    if not isinstance(val, list):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list.")
+
+    val.reverse()
+    if new is not None:
+        parser.context[new] = val
+
+    return ''
+
+
+@script_function(
+    signature=N_("$clear(name)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name.
+
+        Clears the given list/dict variable in-place.
+        Note that this function does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+"""
+    ),
+)
+def func_clear(parser, name):
+    vals = _evaluate_variable_name(parser, name, copy=False)
+
+    if not isinstance(vals, (list, dict)):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or a dict.")
+
+    vals.clear()
+
+    return ''
+
+
+@script_function(
+    eval_args=False,
+    signature=N_("$insert(name, key, value)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name. Argument `value` can be interpreted as a variable name *if requested*.
+
+        Inserts `value` into list/dict variable `name` at index/key `key`. If no index is passed for a list variable, the value is appended to the end.
+
+        Note that this function modifies the variable in-place and does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+"""
+    ),
+)
+def func_insert(parser, name, key, value):
+    vals = name.eval_unpack(parser, copy=False)
+    key = key.eval(parser)
+    value = _unpack_if_requested(parser, value)
+
+    if isinstance(vals, list):
+        if key:
+            vals.insert(int(key), value)
+        else:
+            vals.append(value)
+    elif isinstance(vals, dict):
+        vals[key] = value
+    else:
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or a dict.")
+
+    return ''
+
+@script_function(
+    signature=N_("$extend(name, values)"),
+    documentation=N_(
+        """Arguments `name` and `values` are interpreted as a variable name.
+        
+        Extends the variable `name` by appending the elements of `values` to the end if the variable is a list, or updating it with key-value pairs from `values` if the variable is a dict (equivalent to Python's `update` dict method). 
+
+        Note that this function modifies the variable in-place and does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+"""
+    ),
+)
+def func_extend(parser, name, values):
+    var = _evaluate_variable_name(parser, name, copy=False)
+    values = _evaluate_variable_name(parser, values, copy=False)
+
+    if isinstance(var, list):
+        var.extend(values)
+    elif isinstance(var, dict):
+        var.update(values)
+    else:
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or a dict.")
+
+    return ''
+
+
+@script_function(
+    signature=N_("$remove(name, value[, n=0])"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name.
+
+        If the variable `name` is a list, removes the first `n` occurrences of `value`. If `name` is a dict, remove the first `n` key-value pairs with a value of `value`.
+        If `n` is 0, remove all occurrences (the default).
+
+        Note that this function modifies the variable in-place and does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+"""
+    ),
+)
+def func_remove(parser, name, value, n=0):
+    var = _evaluate_variable_name(parser, name, copy=False)
+    n = int(n)
+
+    if isinstance(var, list):
+        if n == 0:
+            while value in var:
+                var.remove(value)
+        else:
+            for _ in range(n):
+                if value in var:
+                    var.remove(value)
+    elif isinstance(var, dict):
+        count = 0
+        for k, v in var.copy().items():
+            if count == n and n != 0:
+                break
+            if v == value:
+                var.pop(k)
+                count += 1
+    else:
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or a dict.")
+
+    return ''
+
+@script_function(
+    signature=N_("$pop(name, key)"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name.
+
+        Remove the value at index `key` or the key-value pair with a key of `key` in the list/dict variable `name`.
+
+        Note that this function modifies the variable in-place and does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+"""
+    ),
+)
+def func_pop(parser, name, key):
+    var = _evaluate_variable_name(parser, name, copy=False)
+
+    if isinstance(var, list):
+        var.pop(int(key))
+    elif isinstance(var, dict):
+        var.pop(key)
+    else:
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or a dict.")
+
+    return ''
+
+
+@script_function(
+    eval_args=False,
+    signature=N_("$foreachlist(name, code[, new])"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name.
+
+       Iterates over each element in the multi-value/list/dict variable `name`, executing `code` during iteration. If `new` is given, the value returned by `code` in each
+       iteration is saved in a list and saved in `new`.  
+    For each loop, the element value is stored in the variable `_loop_value` and the count is stored in the variable `_loop_count` (counting is done 1-based, as in picard's `$foreach`). For dictionaries, the element key is stored in the variable `_loop_key`. This allows
+    the element or count value to be accessed within the `code` script.
+"""
+    ),
+)
+def func_foreachlist(parser, name, loop_code, new=None):
+    val = name.eval_unpack(parser)
+
+    if new is not None:
+        new = new.eval(parser)
+
+    if isinstance(val, str):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or dict.")
+
+    results = []
+    for loop_count, value in enumerate(val, 1):
+        func_set(parser, '_loop_count', str(loop_count))
+
+        if isinstance(val, dict):
+            func_set(parser, '_loop_key', value)
+            func_set(parser, '_loop_value', val[value])
+        else:
+            func_set(parser, '_loop_value', value)
+
+        results.append(loop_code.eval(parser))
+    func_unset(parser, '_loop_count')
+    func_unset(parser, '_loop_value')
+    func_unset(parser, '_loop_key')
+
+    if new is not None:
+        func_set(parser, new, results)
+
+    return ''
+
+
+@script_function(
+    eval_args=False,
+    signature=N_("$filter(name, code[, new])"),
+    documentation=N_(
+        """Argument `name` is interpreted as a variable name.
+
+        Iterates over each element in the multi-value/list/dict variable `name`, executing `code` during iteration. 
+        If `code` evaluates to an empty string, the current element is removed from the variable, otherwise it is kept in the variable. The resulting object is saved the variable `new`. If `new` is not 
+    given, `name` is modified in-place instead. Note that in-place modification does not work if `name` uses list slicing or filtering of specific dict keys (i.e. `{key1,key2}`).
+    For each loop, the element value is first stored in the variable `_loop_value` and the count is stored in the variable `_loop_count` (counting is done 1-based, as in picard's `$map`). For dictionaries, the element key is stored in the variable `_loop_key`. This allows
+    the element or count value to be accessed within the `code` script.
+"""
+    ),
+)
+def func_filter(parser, name, loop_code, new=None):
+    val = name.eval_unpack(parser, copy=new is not None)
+
+    if new is not None:
+        new = new.eval(parser)
+
+    if isinstance(val, str):
+        raise ScriptRuntimeError(parser._function_stack.get(), "Variable must be a list or dict.")
+
+    val_copy = val.copy()
+    val.clear()
+    for loop_count, value in enumerate(val_copy, 1):
+        func_set(parser, '_loop_count', str(loop_count))
+
+        if isinstance(val_copy, dict):
+            func_set(parser, '_loop_key', value)
+            func_set(parser, '_loop_value', val_copy[value])
+
+            if str(loop_code.eval(parser)):
+                val[value] = val_copy[value]
+        else:
+            func_set(parser, '_loop_value', value)
+            if str(loop_code.eval(parser)):
+                val.append(value)
+
+    func_unset(parser, '_loop_count')
+    func_unset(parser, '_loop_value')
+    func_unset(parser, '_loop_key')
+
+    if new is not None:
+        func_set(parser, new, val)
 
     return ''
