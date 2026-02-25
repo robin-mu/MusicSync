@@ -443,7 +443,7 @@ def _uniqify_inplace(parser, l: list, ignore_case=False):
 @script_function(
     signature=N_("$copymerge(new,old[,duplicates])"),
     documentation=N_(
-        """Argument `new` and `old` are interpreted as a variable name.
+        """Arguments `new` and `old` are interpreted as a variable name.
         If `old` and `new` are both lists or both dicts, they will be merged as expected.
         If `new` is a list and `old` is a string, `old` will be appended to `new`.
         All other argument type combinations will result in an error.
@@ -1277,7 +1277,7 @@ def func_map(parser, multi, loop_code, separator=MULTI_VALUED_JOINER):
     signature=N_("$join(name,text[,separator=; ])"),
     documentation=N_(
         """Argument `name` can be interpreted as a variable name *if requested*. If not requested to be a variable name, it
-        has to be a multi-value literal like "A; B; C". A different separator than "; " can be passed with the `separator` argument.
+        has to be/evaluate to a multi-value string like "A; B; C". A different separator than "; " can be passed with the `separator` argument.
         
         Joins all elements in `name`, placing `text` between each element, and returns the result as a string."""
     ),
@@ -1689,6 +1689,8 @@ def func_max(parser, _type, x, *args):
 # =============================
 # Extra functions for MusicSync
 # =============================
+
+
 def _unpack_if_requested(parser, value):
     if isinstance(value, ScriptExpression):
         return value.eval(parser)
@@ -1731,7 +1733,7 @@ def func_setdict_text(parser, name, value, element_separator=';', kv_separator='
 
 @script_function(
     eval_args=False,
-    signature=N_("$setdict_vars(name, key1, value1, *args"),
+    signature=N_("$setdict_vars(name, key1, value1, *args)"),
     documentation=N_(
         """Sets the variable `name` to a dictionary where `key1` (interpreted as a string) is mapped to `value1` (interpreted as a variable 
         name *if requested*), `key2` to `value2`, etc. An arbitrary amount of key-value pairs can be specified."""
@@ -2028,7 +2030,7 @@ def func_pop(parser, name, key):
         """Argument `name` is interpreted as a variable name.
 
        Iterates over each element in the multi-value/list/dict variable `name`, executing `code` during iteration. If `new` is given, the value returned by `code` in each
-       iteration is saved in a list and saved in `new`.  
+       iteration is saved in a list, which is then saved in `new`.
     For each loop, the element value is stored in the variable `_loop_value` and the count is stored in the variable `_loop_count` (counting is done 1-based, as in picard's `$foreach`). For dictionaries, the element key is stored in the variable `_loop_key`. This allows
     the element or count value to be accessed within the `code` script.
 """
