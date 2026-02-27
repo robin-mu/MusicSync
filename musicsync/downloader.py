@@ -117,9 +117,9 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         self.add_post_processor(FFmpegConcatPP(downloader=self, only_multi_video=True), when='playlist')
         self.add_post_processor(MusicSyncPostProcessor(downloader=self), when='post_process')
 
-    def update_sync_status(self, delete_files: bool = False,
-                           progress_callback: Callable[[float, str], None] | None = None,
-                           interruption_callback: Callable[[], bool] | None = None):
+    def compare(self, delete_files: bool = False,
+                progress_callback: Callable[[float, str], None] | None = None,
+                interruption_callback: Callable[[], bool] | None = None):
         """
         Changes the linked collection in-place. It
         - Adds and removes collection urls if bookmark sync is enabled and the bookmark folder has changed. Files are only deleted if delete_files is true
@@ -174,7 +174,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
 
         # download track info of all collection urls
         self.params['logger'].interruption_callback = interruption_callback
-        logger.prefix = 'update_sync_status'
+        logger.prefix = 'compare'
         for (i, coll_url) in enumerate(collection.urls):
             logger.reset_indent()
 
@@ -391,4 +391,4 @@ if __name__ == '__main__':
     c = library.children[0].children[0]
     downloader = MusicSyncDownloader(c)
 
-    downloader.update_sync_status()
+    downloader.compare()

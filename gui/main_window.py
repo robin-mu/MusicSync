@@ -333,7 +333,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selected_collection.comparing = True
 
         thread = QThread()
-        worker = ThreadingWorker(selected_collection_xml.update_sync_status,
+        worker = ThreadingWorker(selected_collection_xml.compare,
                                  extra={'selected_collection': selected_collection,
                                         'selected_collection_xml': selected_collection_xml})
         worker.moveToThread(thread)
