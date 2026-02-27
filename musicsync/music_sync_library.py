@@ -1,4 +1,5 @@
 import os
+import pickle
 import re
 import xml.etree.ElementTree as et
 from collections import namedtuple
@@ -10,6 +11,7 @@ from xml.etree.ElementTree import Element
 
 import pandas as pd
 import yt_dlp
+from pandas import DataFrame
 from yt_dlp import MetadataParserPP, YoutubeDL
 
 import musicsync.downloader as dl
@@ -19,38 +21,64 @@ from .utils import classproperty
 
 @dataclass
 class MusicSyncLibrary:
-    metadata_table_path: str = ''
-    metadata_fields: list['MetadataField'] = field(default_factory=list)
+    scripts: list['Script'] = field(default_factory=list)
+    metadata_table: DataFrame = field(default_factory=pd.DataFrame)
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
+
+    @classmethod
+    def read_pickle(cls, path: str):
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+
+    def write_pickle(self, path: str):
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
 
     @staticmethod
     def read_xml(xml_path: str) -> 'MusicSyncLibrary':
+        if xml_path.endswith('.pkl'):
+            xml_path = xml_path[:-4] + '.xml'
+
         tree = et.parse(xml_path)
         root = tree.getroot()
         children = []
-        metadata_fields = []
+        scripts = []
         for child in root:
             if child.tag == 'Folder':
                 children.append(Folder.from_xml(child))
             elif child.tag == 'Collection':
                 children.append(Collection.from_xml(child))
-            elif child.tag == 'MetadataField':
-                metadata_fields.append(MetadataField.from_xml(child))
+            elif child.tag == 'Scripts':
+                for script in child:
+                    scripts.append(Script.from_xml(script))
 
-        return MusicSyncLibrary(children=children, metadata_fields=metadata_fields, **root.attrib)
+        csv_path = xml_path[:-4] + '.csv'
+        metadata_table = pd.read_csv(csv_path) if os.path.isfile(csv_path) else pd.DataFrame()
+
+        return MusicSyncLibrary(children=children, scripts=scripts, metadata_table=metadata_table)
 
     def write_xml(self, xml_path: str):
-        attrs = vars(self).copy()
-        attrs.pop('children')
-        attrs.pop('metadata_fields')
+        if xml_path.endswith('.pkl'):
+            xml_path = xml_path[:-4] + '.xml'
 
-        root = et.Element('MusicSyncLibrary', **attrs)
-        for field in self.metadata_fields:
-            root.append(field.to_xml())
+        root = et.Element('MusicSyncLibrary')
+        scripts = et.Element('Scripts')
+        for script in self.scripts:
+            scripts.append(script.to_xml())
+        root.append(scripts)
         for child in self.children:
             root.append(child.to_xml())
 
+        if not xml_path.endswith('.xml'):
+            xml_path += '.xml'
+
         et.ElementTree(root).write(xml_path)
+
+        if not self.metadata_table.empty:
+            self.metadata_table.to_csv(xml_path[:-4] + '.csv')
+
+    def __eq__(self, other: MusicSyncLibrary):
+        return self.scripts == other.scripts and self.children == other.children and (self.metadata_table == other.metadata_table).all().all()
 
 @dataclass
 class Folder(XmlObject):
@@ -196,16 +224,43 @@ class TrackSyncAction(StrEnum):
 
 
 @dataclass
-class MetadataField(XmlObject):
+class Script(XmlObject):
     name: str
+    script: str = ''
+    enabled: bool = field(default=False, compare=False, repr=False)
+
+    @staticmethod
+    def from_xml(el: Element) -> 'XmlObject':
+        script = '\n'.join(' ' * int(c.attrib.get('indent', 0)) + c.text for c in el)
+        if el.tag == 'MetadataSuggestionsScript':
+            return MetadataSuggestionsScript(**(el.attrib | {'script': script}))
+        raise AttributeError('Unknown Script type')
+
+    def to_xml(self) -> Element:
+        attrs = vars(self).copy()
+        attrs.pop('enabled')
+        attrs.pop('script')
+        self.update_xml_attrs(attrs)
+
+        el = et.Element(self.__class__.__name__, attrib=attrs)
+        for line in self.script.split('\n'):
+            indent = len(line) - len(line.lstrip(' '))
+            line_el = et.Element('ScriptLine', indent=str(indent))
+            line_el.text = line.lstrip(' ')
+            el.append(line_el)
+
+        return el
+
+    def update_xml_attrs(self, attrs) -> str:
+        raise NotImplementedError('A script can only be a subclass of Script.')
+
+@dataclass
+class MetadataSuggestionsScript(Script):
     field_name: str = ''
     timed_data: bool = False
     show_format_options: bool = False
     default_format_as_title: bool = False
     default_remove_brackets: bool = False
-    script: str = ''
-
-    enabled: bool = field(default=False, compare=False, repr=False)
 
     def __post_init__(self):
         if isinstance(self.timed_data, str):
@@ -217,22 +272,12 @@ class MetadataField(XmlObject):
         if isinstance(self.default_remove_brackets, str):
             self.default_remove_brackets = self.default_remove_brackets == 'True'
 
-    @staticmethod
-    def from_xml(el: Element) -> 'XmlObject':
-        return MetadataField(**(el.attrib | {'script': el.text}))
-
-    def to_xml(self) -> Element:
-        attrs = vars(self).copy()
-        attrs.pop('enabled')
-        attrs.pop('script')
+    def update_xml_attrs(self, attrs) -> str:
         attrs['timed_data'] = str(self.timed_data)
         attrs['show_format_options'] = str(self.show_format_options)
         attrs['default_format_as_title'] = str(self.default_format_as_title)
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
 
-        el = et.Element('MetadataField', attrib=attrs)
-        el.text = self.script
-        return el
 
 @dataclass
 class FileTag(XmlObject):
@@ -246,6 +291,8 @@ class FileTag(XmlObject):
     def to_xml(self) -> Element:
         return et.Element('FileTag', **vars(self))
 
+
+PathComponent = namedtuple('PathComponent', ['id', 'name'])
 
 @dataclass
 class Collection(XmlObject):
@@ -311,13 +358,11 @@ class Collection(XmlObject):
             FileTag('thumbnail', '0:thumbnail'),
         ]
 
-    DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s]'
+    DEFAULT_FILENAME_FORMAT: ClassVar[str] = '%(title)s [%(id)s].%(ext)s'
     DEFAULT_URL_NAME_FORMAT: ClassVar[str] = '%(title)s'
     DEFAULT_EXCLUDED_YT_DLP_FIELDS: ClassVar[str] = ('formats, thumbnails, automatic_captions, subtitles, heatmap, '
                                                      'chapters, entries, tags, protocol, http_headers, '
                                                      '_format_sort_fields, _version')
-
-    PathComponent = namedtuple('PathComponent', ['id', 'name'])
 
     name: str
 
@@ -360,7 +405,7 @@ class Collection(XmlObject):
                 kwargs['sync_bookmark_title_as_url_name'] = child.attrib['title_as_url_name']
                 kwargs['sync_bookmark_path'] = []
                 for path_component in child:
-                    kwargs['sync_bookmark_path'].append(Collection.PathComponent(**path_component.attrib))
+                    kwargs['sync_bookmark_path'].append(PathComponent(**path_component.attrib))
             elif child.tag == 'SyncActions':
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':

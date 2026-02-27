@@ -4,10 +4,11 @@ import typing
 from copy import deepcopy
 from xml.etree.ElementTree import Element
 
+import pandas as pd
 from PySide6.QtGui import QIcon
 
 from .xml_model import XmlObjectModel, XmlObjectModelItem
-from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Track, MetadataField
+from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Track, Script
 
 
 class FolderItem(XmlObjectModelItem):
@@ -172,19 +173,20 @@ class LibraryModel(XmlObjectModel):
 
         return True
 
-    def __init__(self, xml_path: str=None):
+    def __init__(self, path: str=None):
         super(LibraryModel, self).__init__()
 
-        self.path: str = xml_path
+        self.path: str = path
         self.root = self.invisibleRootItem()
-        self.metadata_table_path: str = ''
         self.loaded_library_object: MusicSyncLibrary | None = None
-        self.metadata_fields: list['MetadataField'] = []
+        self.scripts: list['Script'] = []
+        self.metadata_table: pd.DataFrame = pd.DataFrame()
 
-        if xml_path is not None:
-            self.loaded_library_object = MusicSyncLibrary.read_xml(xml_path)
-            self.metadata_table_path = self.loaded_library_object.metadata_table_path
-            self.metadata_fields = self.loaded_library_object.metadata_fields
+        if path is not None:
+            #self.loaded_library_object = MusicSyncLibrary.read_pickle(path)
+            self.loaded_library_object = MusicSyncLibrary.read_xml(path)
+            self.scripts = self.loaded_library_object.scripts
+            self.metadata_table = self.loaded_library_object.metadata_table
 
             for child in self.loaded_library_object.children:
                 if isinstance(child, Folder):
@@ -192,21 +194,32 @@ class LibraryModel(XmlObjectModel):
                 elif isinstance(child, Collection):
                     self.root.appendRow(CollectionItem.from_xml_object(child))
 
-    def to_xml_object(self) -> MusicSyncLibrary:
+    def to_library_object(self) -> MusicSyncLibrary:
         children = []
         for i in range(self.root.rowCount()):
             row = typing.cast(XmlObjectModelItem, self.root.child(i))
             children.append(row.to_xml_object())
-        return MusicSyncLibrary(metadata_table_path=self.metadata_table_path,
-                                metadata_fields=self.metadata_fields,
+        return MusicSyncLibrary(scripts=self.scripts,
+                                metadata_table=self.metadata_table,
                                 children=children)
 
     def to_xml(self, filename: str | None=None):
         if filename is None:
             filename = self.path
-        lib_object = self.to_xml_object()
+
+        if filename.endswith('.pkl'):
+            filename = filename[:-4] + '.xml'
+
+        lib_object = self.to_library_object()
         self.loaded_library_object = lib_object
         lib_object.write_xml(filename)
+
+    def to_pickle(self, filename: str | None=None):
+        if filename is None:
+            filename = self.path
+        lib_object = self.to_library_object()
+        self.loaded_library_object = lib_object
+        lib_object.write_pickle(filename)
 
     def has_changed(self):
         if self.root.rowCount() == 0:
@@ -215,7 +228,7 @@ class LibraryModel(XmlObjectModel):
         if self.loaded_library_object is None:
             return True
 
-        return self.to_xml_object() != self.loaded_library_object
+        return self.to_library_object() != self.loaded_library_object
 
     @staticmethod
     def add_folder(parent: FolderItem):

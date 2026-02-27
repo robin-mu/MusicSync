@@ -20,13 +20,13 @@ from PySide6.QtWidgets import (
 )
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection, MetadataField, FileTag
+    Collection, Script, MetadataSuggestionsScript
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
 from .models.file_tags_model import FileTagsModel, FileTagsTableColumn
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
-from .models.metadata_fields_model import MetadataFieldsModel, MetadataFieldsTableColumn, CheckboxDelegate
+from .models.scripts_model import ScriptsModel, ScriptsTableColumn, CheckboxDelegate
 from .models.sync_action_combobox_model import SyncActionComboboxModel
 from .threads import ThreadingWorker
 
@@ -41,10 +41,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionOpen_library.triggered.connect(self.open_library)
         self.actionSave_library.triggered.connect(self.save_library)
         self.actionSave_library_as.triggered.connect(self.save_library_as)
-        self.actionChange_Track_Metdata_Table.triggered.connect(self.change_metadata_table)
 
         # Library Tree View
-        self.treeView.setModel(LibraryModel('a.xml'))
+        self.treeView.setModel(LibraryModel('a.pkl'))
         self.treeView.expandAll()
 
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
@@ -64,9 +63,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_sync_button.pressed.connect(self.change_sync_folder)
         self.settings_stop_sync_button.pressed.connect(lambda: self.update_current_sync_folder(''))
 
-        self.metadata_table_label.mousePressEvent = self.change_metadata_table
-        self.metadata_table_label_2.mousePressEvent = self.change_metadata_table
-
         self.action_combo_boxes = dict(
             zip([self.added_combo_box, self.not_downloaded_combo_box, self.removed_combo_box, self.local_combo_box,
                  self.permanent_combo_box, self.downloaded_combo_box],
@@ -81,23 +77,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_filename_format_label.mousePressEvent = self.open_doc_url
 
         # Metadata suggestions tab
-        self.fields_table.setModel(MetadataFieldsModel(deepcopy(self.treeView.model().metadata_fields), parent=self))
-        self.fields_table.setItemDelegateForColumn(MetadataFieldsTableColumn.ENABLED, CheckboxDelegate(self))
-        for row in range(self.fields_table.model().rowCount()):
-            self.fields_table.openPersistentEditor(self.fields_table.model().index(row, MetadataFieldsTableColumn.ENABLED))
-            self.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.ENABLED).refresh_editor(self.fields_table.model().index(row, MetadataFieldsTableColumn.ENABLED))
-        self.fields_table.resizeColumnToContents(0)
-        self.fields_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
+        self.scripts_table.setModel(ScriptsModel(deepcopy(self.treeView.model().scripts), parent=self))
+        self.scripts_table.setItemDelegateForColumn(ScriptsTableColumn.ENABLED, CheckboxDelegate(self))
+        for row in range(self.scripts_table.model().rowCount()):
+            self.scripts_table.openPersistentEditor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
+            self.scripts_table.itemDelegateForColumn(ScriptsTableColumn.ENABLED).refresh_editor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
+        self.scripts_table.resizeColumnToContents(0)
+        self.scripts_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
 
 
         self.field_add_button.pressed.connect(self.add_field)
         self.field_remove_button.pressed.connect(self.remove_field)
-
-        # file tags table
-        self.tag_settings_table.setModel(FileTagsModel())
-
-        self.tag_add_button.pressed.connect(self.add_tag)
-        self.tag_remove_button.pressed.connect(self.remove_tag)
 
         self.threads: list[QThread] = []
         self.workers: list[ThreadingWorker] = []
@@ -133,7 +123,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.treeView.setModel(LibraryModel())
         self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
-        self.update_metadata_table_label()
         self.update_sync_buttons()
         self.update_sync_stack()
 
@@ -154,14 +143,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.treeView.setModel(LibraryModel(filename))
             self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
             self.treeView.expandAll()
-            self.update_metadata_table_label(self.treeView.model().metadata_table_path)
             self.update_sync_buttons()
             self.update_sync_stack()
 
     def save_library(self):
         self.save_settings()
-        self.treeView.model().metadata_fields = deepcopy(self.fields_table.model().fields)
+        self.treeView.model().scripts = deepcopy(self.scripts_table.model().scripts)
         if self.treeView.model().path:
+            self.treeView.model().to_pickle()
             self.treeView.model().to_xml()
             return True
 
@@ -170,24 +159,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def save_library_as(self):
         filename, ok = QFileDialog.getSaveFileName(self, 'Select a file to save to', filter="XML files (*.xml) (*.xml)")
         if filename:
-            if not filename.endswith('.xml'):
-                filename += '.xml'
+            if not filename.endswith('.pkl'):
+                filename += '.pkl'
 
+            self.treeView.model().to_pickle(filename)
             self.treeView.model().to_xml(filename)
             self.treeView.model().path = filename
             return True
         return False
-
-    def change_metadata_table(self, *_):
-        filename, ok = QFileDialog.getSaveFileName(self, 'Select a metadata table to associate this library with',
-                                                   filter='CSV files (*.csv) (*.csv)')
-
-        if filename:
-            if not filename.endswith('.csv'):
-                filename += '.csv'
-
-            self.treeView.model().metadata_table_path = filename
-            self.update_metadata_table_label(filename)
 
     def tab_changed(self, *_):
         self.save_settings(self.get_selected_collection())
@@ -236,15 +215,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.metadata_stack.setCurrentIndex(1)
             self.tags_stack.setCurrentIndex(1)
             self.settings_stack.setCurrentIndex(1)
-            self.metadata_suggestions_stack.setCurrentIndex(1)
-            self.file_tag_settings_stack.setCurrentIndex(1)
+            self.scripting_stack.setCurrentIndex(1)
         else:
             self.sync_stack.setCurrentIndex(0)
             self.metadata_stack.setCurrentIndex(0)
             self.tags_stack.setCurrentIndex(0)
             self.settings_stack.setCurrentIndex(0)
-            self.metadata_suggestions_stack.setCurrentIndex(0)
-            self.file_tag_settings_stack.setCurrentIndex(0)
+            self.scripting_stack.setCurrentIndex(0)
 
         self.statusbar.clearMessage()
 
@@ -280,11 +257,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        item.enabled_metadata_fields = [f.name for f in self.fields_table.model().fields if f.enabled]
-        item.file_tags = deepcopy(self.tag_settings_table.model().tags)
+        item.enabled_metadata_fields = [f.name for f in self.scripts_table.model().scripts if f.enabled]
+        # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
         self.save_field()
-        self.treeView.model().metadata_fields = deepcopy(self.fields_table.model().fields)
+        self.treeView.model().scripts = deepcopy(self.scripts_table.model().scripts)
 
     def browse_folder_path(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
@@ -349,16 +326,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 idx = idx.parent()
 
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
-
-    def update_metadata_table_label(self, path=''):
-        if path:
-            self.metadata_table_label.setText(f'Current metadata table: {path} (Click to change)')
-            self.metadata_table_label_2.setText(f'Current metadata table: {path} (Click to change)')
-        else:
-            self.metadata_table_label.setText(
-                'This library has no metadata table associated with it. (Click to select one)')
-            self.metadata_table_label_2.setText(
-                'This library has no metadata table associated with it. (Click to select one)')
 
     def compare_collection(self):
         selected_collection = self.get_selected_collection()
@@ -430,7 +397,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             elif isinstance(error, InterruptedError):
                 return
             else:
-                QMessageBox.warning(self, 'Error', f'There were errors while comparing this collection: {error}')
+                QMessageBox.warning(self, 'Error', f'There was an error while comparing this collection: {error}')
 
         selected_collection.comparing = False
         self.update_sync_buttons()
@@ -484,15 +451,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
 
         # Metadata fields table
-        self.fields_table.model().update_checkboxes(current_collection.enabled_metadata_fields)
-        for row in range(self.fields_table.model().rowCount()):
-            self.fields_table.itemDelegateForColumn(MetadataFieldsTableColumn.ENABLED).refresh_editor(self.fields_table.model().index(row, MetadataFieldsTableColumn.ENABLED))
+        self.scripts_table.model().update_checkboxes(current_collection.enabled_metadata_fields)
+        for row in range(self.scripts_table.model().rowCount()):
+            self.scripts_table.itemDelegateForColumn(ScriptsTableColumn.ENABLED).refresh_editor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
 
-        self.fields_table.resizeColumnToContents(0)
+        self.scripts_table.resizeColumnToContents(0)
 
         # file tags
-        self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
-        self.tag_settings_table.resizeColumnsToContents()
+        #self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
+        #self.tag_settings_table.resizeColumnsToContents()
 
     def update_sync_buttons(self, last_selected_action: str = None):
         current_collection = self.get_selected_collection()
@@ -507,11 +474,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         else:
             self.compare_button.setEnabled(True)
-
-        if not self.treeView.model().metadata_table_path:
-            self.sync_button.setEnabled(False)
-            self.sync_button.setStatusTip('You need to select a metadata table before sync can start.')
-            return
 
         if self.sync_status_table.model() is None or self.sync_status_table.model().rowCount() == 0:
             self.sync_button.setEnabled(False)
@@ -534,11 +496,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
 
         if current_collection.comparing or current_collection.syncing:
-            # self.sync_progress_stack.setCurrentIndex(1)
             self.sync_progress_bar.setValue(current_collection.sync_progress * self.sync_progress_bar.maximum())
             self.sync_progress_label.setText(current_collection.sync_text)
-        # else:
-        #     self.sync_progress_stack.setCurrentIndex(0)
+        else:
+            self.sync_progress_bar.setValue(0)
+            self.sync_progress_label.setText('')
 
     def update_sync_progress(self, progress: float = 0, text: str = '', collection: CollectionItem = None):
         collection.sync_progress = progress
@@ -546,35 +508,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_sync_stack()
 
     def add_field(self):
-        self.fields_table.model().beginInsertRows(QModelIndex(), self.fields_table.model().rowCount(),
-                                                  self.fields_table.model().rowCount())
-        self.fields_table.model().fields.append(MetadataField(''))
+        self.scripts_table.model().beginInsertRows(QModelIndex(), self.scripts_table.model().rowCount(),
+                                                  self.scripts_table.model().rowCount())
+        self.scripts_table.model().scripts.append(MetadataSuggestionsScript(''))
 
-        self.fields_table.openPersistentEditor(
-            self.fields_table.model().index(self.fields_table.model().rowCount() - 1, MetadataFieldsTableColumn.ENABLED))
-        self.fields_table.model().endInsertRows()
+        self.scripts_table.openPersistentEditor(
+            self.scripts_table.model().index(self.scripts_table.model().rowCount() - 1, ScriptsTableColumn.ENABLED))
+        self.scripts_table.model().endInsertRows()
 
-        new_index = self.fields_table.model().index(self.fields_table.model().rowCount() - 1,
-                                                    MetadataFieldsTableColumn.NAME)
-        self.fields_table.selectRow(new_index.row())
-        self.fields_table.edit(new_index)
+        new_index = self.scripts_table.model().index(self.scripts_table.model().rowCount() - 1,
+                                                     ScriptsTableColumn.NAME)
+        self.scripts_table.selectRow(new_index.row())
+        self.scripts_table.edit(new_index)
 
     def remove_field(self):
-        index = self.fields_table.currentIndex().row()
+        index = self.scripts_table.currentIndex().row()
         if index == -1:
             return
-        self.fields_table.model().beginRemoveRows(QModelIndex(), index, index)
-        self.fields_table.model().fields.pop(index)
-        self.fields_table.model().endRemoveRows()
+        self.scripts_table.model().beginRemoveRows(QModelIndex(), index, index)
+        self.scripts_table.model().scripts.pop(index)
+        self.scripts_table.model().endRemoveRows()
 
     def save_field(self, selection: QItemSelection | None = None):
         if selection is None:
-            index = self.fields_table.selectedIndexes()
+            index = self.scripts_table.selectedIndexes()
             if len(index) == 0:
                 return
-            field = self.fields_table.model().fields[index[0].row()]
+            field = self.scripts_table.model().scripts[index[0].row()]
         else:
-            field = self.fields_table.model().fields[selection.indexes()[0].row()]
+            field = self.scripts_table.model().scripts[selection.indexes()[0].row()]
 
         field.field_name = self.field_name_entry.text()
         field.timed_data = self.timed_field_checkbox.isChecked()
@@ -589,32 +551,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if selected.isEmpty():
             return
-        field: MetadataField = self.fields_table.model().fields[selected.indexes()[0].row()]
+        field: Script = self.scripts_table.model().scripts[selected.indexes()[0].row()]
         self.field_name_entry.setText(field.field_name)
         self.timed_field_checkbox.setChecked(field.timed_data)
         self.format_options_group_box.setChecked(field.show_format_options)
         self.format_as_title_checkbox.setChecked(field.default_format_as_title)
         self.remove_brackets_checkbox.setChecked(field.default_remove_brackets)
         self.script_editor.setPlainText(field.script)
-
-    def add_tag(self):
-        self.tag_settings_table.model().beginInsertRows(QModelIndex(), self.tag_settings_table.model().rowCount(),
-                                                        self.tag_settings_table.model().rowCount())
-        self.tag_settings_table.model().tags.append(FileTag(self.tag_combobox.currentText()))
-        self.tag_settings_table.model().endInsertRows()
-
-        new_index = self.tag_settings_table.model().index(self.tag_settings_table.model().rowCount() - 1,
-                                                          FileTagsTableColumn.FORMAT)
-        self.tag_settings_table.edit(new_index)
-
-    def remove_tag(self):
-        index = self.tag_settings_table.currentIndex().row()
-        if index == -1:
-            return
-
-        self.tag_settings_table.model().beginRemoveRows(QModelIndex(), index, index)
-        self.tag_settings_table.model().tags.pop(index)
-        self.tag_settings_table.model().endRemoveRows()
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
