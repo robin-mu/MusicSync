@@ -103,39 +103,43 @@ class CollectionItem(XmlObjectModelItem):
 class CollectionUrlItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
-        self.url: str = kwargs['url']
+        self.url: str = kwargs.get('url', '')
         self.tracks: dict[str, Track] = kwargs.get('tracks', {})
         self.excluded: bool = kwargs.get('excluded', False)
         self.concat: bool = kwargs.get('concat', False)
         self.is_playlist: bool | None = kwargs.get('is_playlist', None)
+        self.resolved: bool = kwargs.get('resolved', True)
 
-        name = kwargs.get('name')
-        if not name:
+        name = kwargs.get('name', '')
+        if not self.resolved:
             f = self.font()
             f.setItalic(True)
             self.setFont(f)
-
-            self.setEditable(False)
 
             name = self.url
 
         self.setText(name)
         self.setIcon(QIcon.fromTheme('folder-remote'))
 
-    def set_name(self, name: str):
+    def resolve(self, name: str):
         self.setText(name)
         f = self.font()
         f.setItalic(False)
         self.setFont(f)
-        self.setEditable(True)
+        self.resolved = True
 
     @staticmethod
     def from_xml_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
         return CollectionUrlItem(**(vars(collection_url) | {'tracks': deepcopy(collection_url.tracks)}))
 
     def to_xml_object(self):
-        name = self.text() if self.text() != self.url else ''
-        return CollectionUrl(name=name, **vars(self))
+        name = self.text() if self.resolved else ''
+        url = self.url if self.resolved else self.text()
+
+        attr = vars(self).copy()
+        attr.pop('url')
+
+        return CollectionUrl(name=name, url=url, **attr)
 
     def update(self, collection_url: CollectionUrl):
         self.url = collection_url.url
@@ -144,8 +148,8 @@ class CollectionUrlItem(XmlObjectModelItem):
         self.concat = collection_url.concat
         self.is_playlist = collection_url.is_playlist
 
-        if self.text() == self.url or self.text() == '':
-            self.set_name(collection_url.name)
+        if not self.resolved:
+            self.resolve(collection_url.name)
 
 
 class LibraryModel(XmlObjectModel):
@@ -243,11 +247,11 @@ class LibraryModel(XmlObjectModel):
         return new_collection
 
     @staticmethod
-    def add_url(parent: CollectionItem, url: str, name: str= '', tracks: dict[str, Track] | None=None):
+    def add_url(parent: CollectionItem, url: str='', name: str= '', tracks: dict[str, Track] | None=None):
         if tracks is None:
             tracks = {}
 
         new_url = CollectionUrlItem(url=url, name=name, tracks=tracks,
-                                    concat=parent.in_auto_concat(url))
+                                    concat=parent.in_auto_concat(url), resolved=False)
         parent.appendRow(new_url)
         return new_url

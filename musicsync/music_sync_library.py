@@ -526,6 +526,7 @@ class CollectionUrl(XmlObject):
     concat: bool = False
     is_playlist: bool | None = None
     tracks: dict[str, 'Track'] = field(default_factory=dict)
+    resolved: bool = True
 
     def __post_init__(self):
         if isinstance(self.excluded, str):
@@ -537,6 +538,8 @@ class CollectionUrl(XmlObject):
                 self.is_playlist = None
             else:
                 self.is_playlist = self.is_playlist == 'True'
+        if isinstance(self.resolved, str):
+            self.resolved = self.resolved == 'True'
 
     @staticmethod
     def from_xml(el: Element) -> 'CollectionUrl':
@@ -553,6 +556,7 @@ class CollectionUrl(XmlObject):
         attrs['excluded'] = str(self.excluded)
         attrs['concat'] = str(self.concat)
         attrs['is_playlist'] = str(self.is_playlist)
+        attrs['resolved'] = str(self.resolved)
 
         el = et.Element('CollectionUrl', **attrs)
         for track in self.tracks.values():

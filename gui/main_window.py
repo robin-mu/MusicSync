@@ -363,6 +363,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                                       i in range(selected_collection.rowCount())}
             new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
 
+            print(old_urls)
+            print(new_urls)
+
             rows_to_be_removed = []
             for i, (old_url, item) in enumerate(old_urls.items()):
                 if old_url in new_urls:
@@ -370,16 +373,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     rows_to_be_removed.append(i)
 
-                    folder = selected_collection.get_real_path(item)
-                    delete = QMessageBox.question(self,
-                                                  'Delete files',
-                                                  f'The URL {item.text()} has been deleted from the bookmark folder. Do you want to delete the corresponding files located at {folder}?',
-                                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                    if delete == QMessageBox.StandardButton.Yes:
-                        for track in item.tracks.values():
-                            path = selected_collection.get_real_path(item, track)
-                            if os.path.isfile(path):
-                                os.remove(path)
+                    # Don't delete files from within MusicSync if not explicitly prompted
+                    # folder = selected_collection.get_real_path(item)
+                    # delete = QMessageBox.question(self,
+                    #                               'Delete files',
+                    #                               f'The URL {item.text()} has been deleted from the bookmark folder. Do you want to delete the corresponding files located at {folder}?',
+                    #                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    # if delete == QMessageBox.StandardButton.Yes:
+                    #     for track in item.tracks.values():
+                    #         path = selected_collection.get_real_path(item, track)
+                    #         if os.path.isfile(path):
+                    #             os.remove(path)
 
             for i in sorted(rows_to_be_removed, reverse=True):
                 selected_collection.removeRow(i)
@@ -676,9 +680,11 @@ class TreeContextMenu(QMenu):
         self.model.removeRow(self.index.row(), parent_index)
 
     def add_url(self):
-        url, ok = QInputDialog.getText(self, 'Add URL', 'Enter URL:')
-        if url:
-            self.model.add_url(parent=self.item, url=url)
+        new_url = self.model.add_url(parent=self.item)
+
+        new_index = self.model.indexFromItem(new_url)
+        self.parent.setCurrentIndex(new_index)
+        self.parent.edit(new_index)
 
     def import_from_bookmarks(self):
         bookmark_window = BookmarkDialog(self.parent)
