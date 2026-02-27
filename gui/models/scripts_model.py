@@ -24,7 +24,7 @@ class ScriptsTableColumn(IntEnum):
 
     def status_tip(self):
         if self == ScriptsTableColumn.NAME:
-            return 'The name of the field'
+            return 'The name of the script'
         if self == ScriptsTableColumn.ENABLED:
             return 'Whether this script will be executed for the current collection'
         if self == ScriptsTableColumn.TYPE:
@@ -44,30 +44,39 @@ class ScriptsModel(QtCore.QAbstractTableModel):
         return len(self.scripts)
 
     def columnCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()):
-        return 2
+        return len(ScriptsTableColumn.__members__)
 
     def data(self, index, /, role = QtCore.Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
 
-        data = ScriptsModel.field_to_row(self.scripts[index.row()])[index.column()]
+        data = ScriptsModel.script_to_row(self.scripts[index.row()])[index.column()]
         if role == QtCore.Qt.ItemDataRole.BackgroundRole:
             return data
 
-        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole] and index.column() == ScriptsTableColumn.NAME:
+        if role in [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole] and index.column() in (ScriptsTableColumn.NAME, ScriptsTableColumn.TYPE):
             return data
 
         return None
 
     def setData(self, index, value, /, role=QtCore.Qt.ItemDataRole.EditRole):
         if index.isValid():
-            self.set_field_from_index(index, value)
+            script = self.scripts[index.row()]
+            column = index.column()
+            if column == ScriptsTableColumn.ENABLED:
+                script.enabled = value
+            elif column == ScriptsTableColumn.NAME:
+                script.name = value
             return True
 
         return False
 
     def flags(self, index):
-        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+        flags = QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+        if index.isValid() and index.column() in (ScriptsTableColumn.NAME, ScriptsTableColumn.ENABLED):
+            flags |= QtCore.Qt.ItemFlag.ItemIsEditable
+
+        return flags
 
     def sort(self, column, /, order = None):
         if order is None:
@@ -75,27 +84,19 @@ class ScriptsModel(QtCore.QAbstractTableModel):
         if column == ScriptsTableColumn.ENABLED:
             self.layoutAboutToBeChanged.emit()
 
-            self.scripts = sorted(self.scripts, key=lambda field: field.name)
-            self.scripts = sorted(self.scripts, key=lambda field: int(field.enabled), reverse=order == QtCore.Qt.SortOrder.DescendingOrder)
+            self.scripts = sorted(self.scripts, key=lambda script: script.name)
+            self.scripts = sorted(self.scripts, key=lambda script: int(script.enabled), reverse=order == QtCore.Qt.SortOrder.DescendingOrder)
 
             self.layoutChanged.emit()
             self.sort_order = order
 
     @staticmethod
-    def field_to_row(field: Script) -> tuple[bool, str]:
-        return field.enabled, field.name
+    def script_to_row(script: Script) -> tuple[bool, str, str]:
+        return script.enabled, script.name, script.script_type
 
-    def set_field_from_index(self, index: QModelIndex, value: Any):
-        field = self.scripts[index.row()]
-        column = index.column()
-        if column == ScriptsTableColumn.ENABLED:
-            field.enabled = value
-        elif column == ScriptsTableColumn.NAME:
-            field.name = value
-
-    def update_checkboxes(self, enabled_fields: list[str]):
-        for field in self.scripts:
-            field.enabled = field.name in enabled_fields
+    def update_checkboxes(self, enabled_scripts: list[str]):
+        for script in self.scripts:
+            script.enabled = script.name in enabled_scripts
 
 
 class CheckboxDelegate(QtWidgets.QStyledItemDelegate):

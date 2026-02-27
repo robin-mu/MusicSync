@@ -227,7 +227,9 @@ class TrackSyncAction(StrEnum):
 class Script(XmlObject):
     name: str
     script: str = ''
+
     enabled: bool = field(default=False, compare=False, repr=False)
+    script_type: ClassVar[str] = 'Script'
 
     @staticmethod
     def from_xml(el: Element) -> 'XmlObject':
@@ -261,6 +263,8 @@ class MetadataSuggestionsScript(Script):
     show_format_options: bool = False
     default_format_as_title: bool = False
     default_remove_brackets: bool = False
+
+    script_type: ClassVar[str] = 'Metadata suggestions'
 
     def __post_init__(self):
         if isinstance(self.timed_data, str):
@@ -381,7 +385,7 @@ class Collection(XmlObject):
 
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS)
 
-    enabled_metadata_fields: list[str] = field(default_factory=list)
+    enabled_scripts: list[str] = field(default_factory=list)
     file_tags: list['FileTag'] = field(default_factory=lambda: Collection.DEFAULT_FILE_TAGS)
 
     urls: list['CollectionUrl'] = field(default_factory=list)
@@ -410,11 +414,11 @@ class Collection(XmlObject):
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':
                 kwargs['urls'].append(CollectionUrl.from_xml(child))
-            elif child.tag == 'EnabledMetadataFields':
-                kwargs['enabled_metadata_fields'] = []
+            elif child.tag == 'EnabledScripts':
+                kwargs['enabled_scripts'] = []
                 for ref in child:
-                    if ref.tag == 'MetadataFieldRef':
-                        kwargs['enabled_metadata_fields'].append(ref.attrib['name'])
+                    if ref.tag == 'ScriptRef':
+                        kwargs['enabled_scripts'].append(ref.attrib['name'])
             elif child.tag == 'FileTags':
                 kwargs['file_tags'] = [FileTag.from_xml(tag) for tag in child]
 
@@ -428,7 +432,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_title_as_url_name')
         attrs.pop('sync_actions')
         attrs.pop('file_tags')
-        attrs.pop('enabled_metadata_fields')
+        attrs.pop('enabled_scripts')
         attrs.pop('downloader')
         attrs.pop('excluded_yt_dlp_fields')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
@@ -448,11 +452,11 @@ class Collection(XmlObject):
         if self.sync_actions != Collection.DEFAULT_SYNC_ACTIONS:
             el.append(et.Element('SyncActions', **self.sync_actions))
 
-        if self.enabled_metadata_fields:
-            fields = et.Element('EnabledMetadataFields')
-            for ref in self.enabled_metadata_fields:
-                fields.append(et.Element('MetadataFieldRef', attrib={'name': ref}))
-            el.append(fields)
+        if self.enabled_scripts:
+            scripts = et.Element('EnabledScripts')
+            for ref in self.enabled_scripts:
+                scripts.append(et.Element('ScriptRef', attrib={'name': ref}))
+            el.append(scripts)
 
         if self.file_tags != Collection.DEFAULT_FILE_TAGS:
             file_tags = et.Element('FileTags')
@@ -490,9 +494,8 @@ class Collection(XmlObject):
         return os.path.join(folder, track.filename)
 
     def in_auto_concat(self, url: str) -> bool:
-        patterns = re.split(r'(?<!\\),', self.auto_concat_urls)
+        patterns = self.auto_concat_urls.split('\n')
         for pattern in patterns:
-            pattern = pattern.replace(r'\,', ',')
             if pattern.startswith('re:') and re.match(pattern[3:], url) is not None:
                 return True
             else:

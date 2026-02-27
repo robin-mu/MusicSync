@@ -53,7 +53,7 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
-        self.enabled_metadata_fields = kwargs.get('enabled_metadata_fields', [])
+        self.enabled_scripts = kwargs.get('enabled_scripts', [])
         self.file_tags = kwargs.get('file_tags', Collection.DEFAULT_FILE_TAGS)
         self.url_name_format = kwargs.get('url_name_format', '')
         self.auto_concat_urls = kwargs.get('auto_concat_urls', '')

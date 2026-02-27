@@ -4,8 +4,8 @@ from copy import deepcopy
 
 import pandas as pd
 from PySide6 import QtCore, QtWidgets
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QThreadPool, QModelIndex, QThread
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon, QCursor
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QModelIndex, QThread
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
@@ -24,7 +24,6 @@ from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, Colle
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
-from .models.file_tags_model import FileTagsModel, FileTagsTableColumn
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from .models.scripts_model import ScriptsModel, ScriptsTableColumn, CheckboxDelegate
 from .models.sync_action_combobox_model import SyncActionComboboxModel
@@ -83,11 +82,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.scripts_table.openPersistentEditor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
             self.scripts_table.itemDelegateForColumn(ScriptsTableColumn.ENABLED).refresh_editor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
         self.scripts_table.resizeColumnToContents(0)
-        self.scripts_table.selectionModel().selectionChanged.connect(self.field_selection_changed)
+        self.scripts_table.selectionModel().selectionChanged.connect(self.script_selection_changed)
 
 
-        self.field_add_button.pressed.connect(self.add_field)
-        self.field_remove_button.pressed.connect(self.remove_field)
+        self.script_add_button.pressed.connect(self.add_script)
+        self.script_remove_button.pressed.connect(self.remove_script)
 
         self.threads: list[QThread] = []
         self.workers: list[ThreadingWorker] = []
@@ -257,10 +256,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        item.enabled_metadata_fields = [f.name for f in self.scripts_table.model().scripts if f.enabled]
+        item.enabled_scripts = [f.name for f in self.scripts_table.model().scripts if f.enabled]
         # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
-        self.save_field()
+        self.save_script()
         self.treeView.model().scripts = deepcopy(self.scripts_table.model().scripts)
 
     def browse_folder_path(self):
@@ -451,7 +450,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
 
         # Metadata fields table
-        self.scripts_table.model().update_checkboxes(current_collection.enabled_metadata_fields)
+        self.scripts_table.model().update_checkboxes(current_collection.enabled_scripts)
         for row in range(self.scripts_table.model().rowCount()):
             self.scripts_table.itemDelegateForColumn(ScriptsTableColumn.ENABLED).refresh_editor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
 
@@ -507,7 +506,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         collection.sync_text = text
         self.update_sync_stack()
 
-    def add_field(self):
+    def add_script(self):
         self.scripts_table.model().beginInsertRows(QModelIndex(), self.scripts_table.model().rowCount(),
                                                   self.scripts_table.model().rowCount())
         self.scripts_table.model().scripts.append(MetadataSuggestionsScript(''))
@@ -521,7 +520,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.scripts_table.selectRow(new_index.row())
         self.scripts_table.edit(new_index)
 
-    def remove_field(self):
+    def remove_script(self):
         index = self.scripts_table.currentIndex().row()
         if index == -1:
             return
@@ -529,35 +528,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.scripts_table.model().scripts.pop(index)
         self.scripts_table.model().endRemoveRows()
 
-    def save_field(self, selection: QItemSelection | None = None):
+    def save_script(self, selection: QItemSelection | None = None):
         if selection is None:
             index = self.scripts_table.selectedIndexes()
             if len(index) == 0:
                 return
-            field = self.scripts_table.model().scripts[index[0].row()]
+            script = self.scripts_table.model().scripts[index[0].row()]
         else:
-            field = self.scripts_table.model().scripts[selection.indexes()[0].row()]
+            script = self.scripts_table.model().scripts[selection.indexes()[0].row()]
 
-        field.field_name = self.field_name_entry.text()
-        field.timed_data = self.timed_field_checkbox.isChecked()
-        field.show_format_options = self.format_options_group_box.isChecked()
-        field.default_format_as_title = self.format_as_title_checkbox.isChecked()
-        field.default_remove_brackets = self.remove_brackets_checkbox.isChecked()
-        field.script = self.script_editor.toPlainText()
+        if isinstance(script, MetadataSuggestionsScript):
+            script.field_name = self.field_name_entry.text()
+            script.timed_data = self.timed_field_checkbox.isChecked()
+            script.show_format_options = self.format_options_group_box.isChecked()
+            script.default_format_as_title = self.format_as_title_checkbox.isChecked()
+            script.default_remove_brackets = self.remove_brackets_checkbox.isChecked()
+        script.script = self.script_editor.toPlainText()
 
-    def field_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
+    def script_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if not deselected.isEmpty():
-            self.save_field(deselected)
+            self.save_script(deselected)
 
         if selected.isEmpty():
             return
-        field: Script = self.scripts_table.model().scripts[selected.indexes()[0].row()]
-        self.field_name_entry.setText(field.field_name)
-        self.timed_field_checkbox.setChecked(field.timed_data)
-        self.format_options_group_box.setChecked(field.show_format_options)
-        self.format_as_title_checkbox.setChecked(field.default_format_as_title)
-        self.remove_brackets_checkbox.setChecked(field.default_remove_brackets)
-        self.script_editor.setPlainText(field.script)
+        script: Script = self.scripts_table.model().scripts[selected.indexes()[0].row()]
+
+        if isinstance(script, MetadataSuggestionsScript):
+            self.script_type_settings_stack.setCurrentIndex(0)
+            self.field_name_entry.setText(script.field_name)
+            self.timed_field_checkbox.setChecked(script.timed_data)
+            self.format_options_group_box.setChecked(script.show_format_options)
+            self.format_as_title_checkbox.setChecked(script.default_format_as_title)
+            self.remove_brackets_checkbox.setChecked(script.default_remove_brackets)
+        self.script_editor.setPlainText(script.script)
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
