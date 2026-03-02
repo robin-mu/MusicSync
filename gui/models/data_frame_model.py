@@ -2,7 +2,6 @@ import pandas as pd
 from PySide6 import QtCore
 from PySide6.QtCore import QAbstractTableModel, QModelIndex
 
-
 class DataFrameTableModel(QAbstractTableModel):
     def __init__(self, df: pd.DataFrame, parent=None):
         super().__init__(parent)
@@ -17,6 +16,15 @@ class DataFrameTableModel(QAbstractTableModel):
         return 0
 
     def delegate_columns(self) -> list[int]:
+        return []
+
+    def editable_columns(self) -> list[int]:
+        return []
+
+    def fillable_columns(self) -> list[int]:
+        """
+        Indices of columns whose cells will display a fill handle like in a spreadsheet. When dragged up or down, all cells are filled with the value of the current cell
+        """
         return []
 
     def column_display_name(self, col: int) -> str | None:
@@ -35,7 +43,7 @@ class DataFrameTableModel(QAbstractTableModel):
         if not index.isValid():
             return None
 
-        if role == QtCore.Qt.ItemDataRole.DisplayRole and index.column() not in self.delegate_columns():
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return self.display_data(self.df.iloc[index.row(), index.column()])
         elif role == QtCore.Qt.ItemDataRole.BackgroundRole:
             return self.df.iloc[index.row(), index.column()]
@@ -61,4 +69,8 @@ class DataFrameTableModel(QAbstractTableModel):
         return False
 
     def flags(self, index):
-        return QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+        flags = QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
+        if index.column() in self.editable_columns():
+            flags |= QtCore.Qt.ItemFlag.ItemIsEditable
+
+        return flags

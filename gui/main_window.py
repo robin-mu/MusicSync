@@ -1,5 +1,4 @@
 import functools
-import os.path
 from copy import deepcopy
 
 import pandas as pd
@@ -10,13 +9,12 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
     QFileDialog,
-    QInputDialog,
     QMainWindow,
     QMenu,
     QMessageBox,
     QTreeView,
     QTreeWidget,
-    QTreeWidgetItem, QStyle,
+    QTreeWidgetItem, QStyle, QHeaderView,
 )
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
@@ -51,7 +49,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.tabWidget.currentChanged.connect(self.tab_changed)
 
-        # File sync tab
+        self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(
+            update_callback=self.update_sync_buttons, window=self, view=self.sync_status_table))
+
         self.compare_button.pressed.connect(self.compare_collection)
         self.sync_button.pressed.connect(self.sync_collection)
 
@@ -84,7 +84,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.scripts_table.resizeColumnToContents(0)
         self.scripts_table.selectionModel().selectionChanged.connect(self.script_selection_changed)
 
-
         self.script_add_button.pressed.connect(self.add_script)
         self.script_remove_button.pressed.connect(self.remove_script)
 
@@ -102,6 +101,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def eventFilter(self, obj, event):
         et = event.type()
 
+        # Sync action combo boxes
         for box in self.action_combo_boxes.keys():
             if obj is box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
                 self.statusbar.clearMessage()
@@ -443,12 +443,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def update_tables(self):
         self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
-        self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(
-            update_callback=self.update_sync_buttons, parent=self))
-        for row in range(self.sync_status_table.model().rowCount()):
-            self.sync_status_table.openPersistentEditor(
-                self.sync_status_table.model().index(row, FileSyncModelColumn.ACTION))
-        self.sync_status_table.resizeColumnsToContents()
+
+        self.sync_status_table.horizontalHeader().setSectionResizeMode(FileSyncModelColumn.ACTION, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        for col in FileSyncModelColumn.__members__.values():
+            if col != FileSyncModelColumn.ACTION:
+                self.sync_status_table.horizontalHeader().setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.update_sync_buttons()
 
         current_collection = self.get_selected_collection()

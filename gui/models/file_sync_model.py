@@ -72,11 +72,17 @@ class FileSyncModel(DataFrameTableModel):
     def delegate_columns(self) -> list[int]:
         return [FileSyncModelColumn.ACTION]
 
+    def editable_columns(self) -> list[int]:
+        return [FileSyncModelColumn.ACTION]
+
+    def fillable_columns(self) -> list[int]:
+        return [FileSyncModelColumn.ACTION]
+
     def column_display_name(self, col: int) -> str | None:
         return str(FileSyncModelColumn(col))
 
     def display_data(self, value) -> str:
-        if isinstance(value, TrackSyncStatus):
+        if isinstance(value, (TrackSyncStatus, TrackSyncAction)):
             return value.gui_string
 
         return super().display_data(value)
@@ -100,8 +106,8 @@ class FileSyncModel(DataFrameTableModel):
         return df
 
 class ActionComboboxDelegate(ComboBoxDelegate):
-    def __init__(self, update_callback=None, parent=None):
-        ComboBoxDelegate.__init__(self, update_callback=update_callback, parent=parent)
+    def __init__(self, update_callback=None, window=None, view=None):
+        ComboBoxDelegate.__init__(self, update_callback=update_callback, window=window, view=view)
 
     def to_model_data(self, val: str) -> TrackSyncAction:
         return next(a for a in TrackSyncAction.__members__.values() if a.gui_string == val)

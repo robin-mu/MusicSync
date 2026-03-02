@@ -92,7 +92,7 @@ class Ui_MainWindow(object):
         self.compare_button = QtWidgets.QPushButton(parent=self.sync_status_page)
         self.compare_button.setObjectName("compare_button")
         self.gridLayout_3.addWidget(self.compare_button, 2, 2, 1, 1)
-        self.sync_status_table = QtWidgets.QTableView(parent=self.sync_status_page)
+        self.sync_status_table = DataFrameView(parent=self.sync_status_page)
         self.sync_status_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.sync_status_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.sync_status_table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
@@ -246,7 +246,7 @@ class Ui_MainWindow(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setObjectName("scrollArea")
         self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 343, 1068))
+        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 811, 1068))
         self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
         self.formLayout_2 = QtWidgets.QFormLayout(self.scrollAreaWidgetContents)
         self.formLayout_2.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeading|QtCore.Qt.AlignmentFlag.AlignLeft|QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -601,7 +601,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuFile.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(4)
+        self.tabWidget.setCurrentIndex(0)
         self.sync_stack.setCurrentIndex(1)
         self.metadata_stack.setCurrentIndex(1)
         self.tags_stack.setCurrentIndex(1)
@@ -706,3 +706,4 @@ class Ui_MainWindow(object):
         self.actionNew_library.setText(_translate("MainWindow", "New library"))
         self.actionNew_library.setShortcut(_translate("MainWindow", "Ctrl+N"))
         self.actionChange_Track_Metdata_Table.setText(_translate("MainWindow", "Change track metdata table"))
+from .data_frame_view import DataFrameView
