@@ -92,7 +92,7 @@ class FileSyncModel(DataFrameTableModel):
         columns = [c.df_column_name() for c in FileSyncModelColumn.__members__.values()]
 
         df = pd.DataFrame(columns=columns)
-        for url in collection.urls:
+        for url in collection._urls:
             url_df = pd.DataFrame.from_records([dict(zip(columns, [url.name,
                                                                    track.filename,
                                                                    track.title,

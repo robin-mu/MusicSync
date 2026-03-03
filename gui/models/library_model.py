@@ -54,10 +54,10 @@ class CollectionItem(XmlObjectModelItem):
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
         self.enabled_scripts = kwargs.get('enabled_scripts', [])
-        self.file_tags = kwargs.get('file_tags', Collection.DEFAULT_FILE_TAGS)
         self.url_name_format = kwargs.get('url_name_format', '')
-        self.auto_concat_urls = kwargs.get('auto_concat_urls', '')
+        self.auto_concat_urls = kwargs.get('auto_concat_urls', False)
         self.excluded_yt_dlp_fields = kwargs.get('excluded_yt_dlp_fields', Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS)
+        self.yt_dlp_options = kwargs.get('yt_dlp_options', '')
 
         self.comparing: bool = False
         self.syncing: bool = False
@@ -67,7 +67,7 @@ class CollectionItem(XmlObjectModelItem):
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':
         collection_item = CollectionItem(**vars(collection))
-        for url in collection.urls:
+        for url in collection._urls:
             collection_item.appendRow(CollectionUrlItem.from_xml_object(url))
 
         return collection_item
@@ -84,7 +84,7 @@ class CollectionItem(XmlObjectModelItem):
             child = self.child(i)
             children.append(child.to_xml_object())
 
-        return Collection(name=self.text(), urls=children, **args)
+        return Collection(name=self.text(), _urls=children, **args)
 
 
     def get_real_path(self, url: 'CollectionUrlItem', track: 'Track | None'=None):
@@ -108,7 +108,8 @@ class CollectionUrlItem(XmlObjectModelItem):
         self.excluded: bool = kwargs.get('excluded', False)
         self.concat: bool = kwargs.get('concat', False)
         self.is_playlist: bool | None = kwargs.get('is_playlist', None)
-        self.resolved: bool = kwargs.get('resolved', True)
+        self.resolved: bool = kwargs.get('resolved', False)
+        self.save_to_subfolder: bool = kwargs.get('save_to_subfolder', False)
 
         name = kwargs.get('name', '')
         if not self.resolved:
@@ -187,7 +188,7 @@ class LibraryModel(XmlObjectModel):
         self.metadata_table: pd.DataFrame = pd.DataFrame()
 
         if path is not None:
-            #self.loaded_library_object = MusicSyncLibrary.read_pickle(path)
+            # self.loaded_library_object = MusicSyncLibrary.read_pickle(path)
             self.loaded_library_object = MusicSyncLibrary.read_xml(path)
             self.scripts = self.loaded_library_object.scripts
             self.metadata_table = self.loaded_library_object.metadata_table

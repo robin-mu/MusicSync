@@ -193,11 +193,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings_folder_path.setText(selected_collection.folder_path)
             self.settings_filename_format.setText(selected_collection.filename_format)
             self.settings_file_extension.setText(selected_collection.file_extension)
-            self.settings_subfolder.setChecked(selected_collection.save_playlists_to_subfolders)
+            self.settings_subfolder_checkbox.setChecked(selected_collection.save_playlists_to_subfolders)
             self.settings_url_name_format.setText(selected_collection.url_name_format)
             self.settings_exclude_urls_checkbox.setChecked(selected_collection.exclude_after_download)
-            self.settings_auto_concat_urls.setPlainText(selected_collection.auto_concat_urls)
+            self.settings_auto_concat_checkbox.setChecked(selected_collection.auto_concat_urls)
             self.settings_excluded_yt_dlp_fields.setText(selected_collection.excluded_yt_dlp_fields)
+            self.settings_yt_dlp_options.setText(selected_collection.yt_dlp_options)
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file,
                                             selected_collection.sync_bookmark_path,
@@ -235,11 +236,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.folder_path = self.settings_folder_path.text()
         item.filename_format = self.settings_filename_format.text()
         item.file_extension = self.settings_file_extension.text()
-        item.save_playlists_to_subfolders = self.settings_subfolder.isChecked()
+        item.save_playlists_to_subfolders = self.settings_subfolder_checkbox.isChecked()
         item.url_name_format = self.settings_url_name_format.text()
         item.exclude_after_download = self.settings_exclude_urls_checkbox.isChecked()
-        item.auto_concat_urls = self.settings_auto_concat_urls.toPlainText()
+        item.auto_concat_urls = self.settings_auto_concat_checkbox.isChecked()
         item.excluded_yt_dlp_fields = self.settings_excluded_yt_dlp_fields.text()
+        item.yt_dlp_options = self.settings_yt_dlp_options.text()
 
         item.sync_actions = {
             TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(
@@ -291,18 +293,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection.sync_bookmark_title_as_url_name = set_url_name
 
         if file:
-            font = self.settings_folder_path.font()
-            font.setItalic(False)
-            self.settings_bookmark_label.setFont(font)
-
             text = f'File: {file}\nFolder: {"/".join([e[1] for e in path])}'
             self.settings_bookmark_label.setText(text)
         else:
-            font = self.settings_folder_path.font()
-            font.setItalic(True)
-            self.settings_bookmark_label.setFont(font)
-
-            self.settings_bookmark_label.setText('Not syncing')
+            self.settings_bookmark_label.setText('<html><head/><body>File: <span style=" font-style:italic;">Not syncing<br/></span>Folder: <span style=" font-style:italic;">Not syncing</span></body></html>')
 
     def change_sync_folder(self):
         def selection_changed(selected: QItemSelection, _: QItemSelection):
@@ -641,6 +635,10 @@ class TreeContextMenu(QMenu):
                 import_urls_from_bookmarks_action.setEnabled(False)
             self.addAction(import_urls_from_bookmarks_action)
         elif isinstance(self.item, CollectionUrlItem):
+            subfolder_action = QAction('Save playlist in subfolder', checkable=True, checked=self.item.save_to_subfolder)
+            subfolder_action.triggered.connect(self.toggle_subfolder)
+            self.addAction(subfolder_action)
+
             exclude_action = QAction('Exclude URL from downloading', checkable=True, checked=self.item.excluded)
             exclude_action.triggered.connect(self.toggle_excluded)
             self.addAction(exclude_action)
@@ -715,6 +713,9 @@ class TreeContextMenu(QMenu):
 
     def toggle_concat(self):
         self.item.concat = not self.item.concat
+
+    def toggle_subfolder(self):
+        self.item.save_to_subfolder = not self.item.save_to_subfolder
 
 
 class MetadataSuggestionsTableStyle(QtWidgets.QProxyStyle):

@@ -1,7 +1,6 @@
 import os.path
 from collections import namedtuple
 from functools import partial
-from pprint import pprint
 from typing import Callable, Any
 
 import pandas as pd
@@ -73,10 +72,8 @@ class MusicSyncPostProcessor(PostProcessor):
 class MusicSyncDownloader(yt_dlp.YoutubeDL):
     @classproperty
     def DEFAULT_OPTIONS(self) -> dict[str, Any]:
-        return {'final_ext': 'mp3',
-                'format': 'ba[acodec^=mp3]/ba/b',
-                'outtmpl': {
-                    'default': '%(extractor)s_%(playlist_id)s_%(playlist_index&{}_|)s%(id)s.%(ext)s',
+        return {'outtmpl': {
+                    'default': '%(extractor)s_%(playlist_id&{}_|)s%(playlist_index&{}_|)s%(id)s.%(ext)s',
                 },
                 'postprocessors': [
                     {'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
@@ -84,10 +81,6 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                                   '%(meta_track)s')],
                      'key': 'MetadataParser',
                      'when': 'pre_process'},
-                    {'key': 'FFmpegExtractAudio',
-                     'nopostoverwrites': False,
-                     'preferredcodec': 'mp3',
-                     'preferredquality': '5'},
                     {'add_chapters': True,
                      'add_infojson': 'if_exists',
                      'add_metadata': True,
@@ -104,6 +97,18 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                 'home': os.path.realpath(collection.folder_path),
             }
         })
+
+        if collection.filename_format:
+            params['outtmpl']['default'] = collection.filename_format
+
+        # if file extension is audio, extract audio
+        if True:
+            params['postprocessors'].append({'key': 'FFmpegExtractAudio',
+             'nopostoverwrites': False,
+             'preferredcodec': self.collection.file_extension,
+             'preferredquality': '5'})
+
+            params['format'] = 'ba/b'
 
         super(MusicSyncDownloader, self).__init__(params=params)
 
@@ -140,9 +145,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             for child in folder.values():
                 if child.url not in collection_urls:
                     logger.debug(f'URL {child.url} ({child.bookmark_title}) added to collection "{collection.name}"')
-                    collection.urls.append(lib.CollectionUrl(url=child.url,
-                                                             name=child.bookmark_title if collection.sync_bookmark_title_as_url_name else '',
-                                                             concat=collection.in_auto_concat(child.url)))
+                    collection.add_url(url=child.url, name=child.bookmark_title if collection.sync_bookmark_title_as_url_name else '')
 
             bookmark_urls = [b.url for b in folder.values()]
             to_delete_indexes = []
@@ -169,8 +172,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                             if os.path.isdir(folder):
                                 os.remove(folder)
 
-            collection.urls = [collection_url for i, collection_url in enumerate(collection.urls) if
-                               i not in to_delete_indexes]
+            collection._urls = [collection_url for i, collection_url in enumerate(collection.urls) if
+                                i not in to_delete_indexes]
 
         # download track info of all collection urls
         self.params['logger'].interruption_callback = interruption_callback
@@ -189,9 +192,6 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             if coll_url.excluded:
                 logger.debug(f'{coll_url} is excluded. Skipping...')
                 continue
-
-            if not coll_url.concat and self.collection.in_auto_concat(coll_url.url):
-                coll_url.concat = True
 
             info = self.extract_info(coll_url.url, process=False)
             if not coll_url.name:

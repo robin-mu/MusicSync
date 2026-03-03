@@ -91,15 +91,17 @@ The following settings are available:
 
 ## File output
 - **Folder path**: The base folder where all tracks in this collection will be saved.
-- **Filename format**: Base format for downloaded files using [yt-dlp's output template](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template) syntax. For advanced renaming using local metadata, see [TODO]. Default: `%(title)s [%(id)s].%(ext)s` (same as in yt-dlp)
+- **Filename format**: Base format for downloaded files using [yt-dlp's output template](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template) syntax. For advanced renaming using local metadata, see [TODO]. Default: `%(extractor)s_%(playlist_id&{}_|)s%(playlist_index&{}_|)s%(id)s.%(ext)s` (name of extractor/site (e.g. `youtube`), playlist id and index if the collection URL is a playlist, id and extension)
 - **File extension**: The file extension your downloaded files will have. If you want to download videos, you have to enter a video extension. Default: best audio format returned by yt-dlp.
+- **Exclude these yt-dlp fields from the metadata table**: yt-dlp's info dicts contain data that is not relevant metadata or too big to be saved in the metadata table. [These](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/common.py#L124-L487) are all fields that info-dict can contain, but certain pages also set additional fields. In this setting you can provide a comma-separated list of fields which are not saved in the metadata table. They are still saved temporarily so that they can be accessed in metadata selection right after downloading, but are deleted when MusicSync is closed. To (temporarily) access these fields in the future, you can just redownload the metadata from the File sync tab.
+- **Additional yt-dlp command-line options**: Additional command-line options that will be passed to yt-dlp before downloading. Note that these options overwrite options set by MusicSync (e.g. the filename format setting above), so be careful what you enter here. 
 
-## URL Settings
+## URL Settings defaults
+These are the settings newly added Collection URLs will be initialized with. Changing these settings does not affect present URLs, unless stated otherwise.
 - **URL name format**: Name of URLs using [yt-dlp's output-template](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template) syntax. Default: `%(title)s`
 - **Save playlist-type URLs in subfolders**: If a URL is a playlist, create a subfolder in the **Folder path** specified above and save all playlist entries there. The subfolder will be named after the URL name set through the **URL name format**.
 - **Automatically exclude URLs after first download**: If a URL is excluded, its tracks will not be compared with your local files when syncing. Can be useful for playlists whose contents don't change and don't have to be synced after the first download, e.g. albums.
-- **Automatically concatenate videos for these URLs**: A list of playlist-type URLs or regular expressions (indicated by a prefix of "re:") whose entries will be automatically concatenated into one file. One URL/expression per line
-- **Exclude these yt-dlp fields from the metadata table**: yt-dlp's info dicts contain data that is not relevant metadata or too big to be saved in the metadata table. [These](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/common.py#L124-L487) are all fields that info-dict can contain, but certain pages also set additional fields. In this setting you can provide a comma-separated list of fields which are not saved in the metadata table. They are still saved temporarily so that they can be accessed in metadata selection right after downloading, but are deleted when MusicSync is closed. To (temporarily) access these fields in the future, you can just redownload the metadata from the File sync tab.
+- **Automatically concatenate videos of playlist-type URLs**: If a URL is a playlist, concatenate its entries into one file (in order of appearance).
 
 ## Bookmark Sync
 By enabling bookmark sync, the URLs of this collection will be synced with the bookmarks of the specified bookmark folder in your browser. When syncing, editing URLs from the GUI is not possible. Before syncing, MusicSync looks for the bookmark folder in the browser's database, adding all new URLs to the collection and removing all deleted URLs. If bookmark sync is enabled, no URLs can be manually added to or removed from the collection.
@@ -277,6 +279,7 @@ Some functions have been added, e.g. to support list and dict manipulations or t
 The following script types are available:
 - **Metadata suggestions**: Add a custom field to your metadata. For each downloaded video, the script generates suggestions for possible values of that field, out of which you can select in the "Metadata" tab
 - **Tagging**: Add tags to files
+- **Sync Action**: Select a sync action
 - **File name**: Change the name of files
 - **Pre-process** (`pre_process` in yt-dlp): After info extraction
 - **After filter** (`after_filter` in yt-dlp): After video passes filter

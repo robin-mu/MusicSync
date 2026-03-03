@@ -1,6 +1,6 @@
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import QModelIndex, QRect, Qt, QPoint
-from PySide6.QtGui import QPainter, QBrush, QColor, QPen
+from PySide6.QtGui import QPainter, QColor, QPen
 
 from gui.models.item_delegates import ComboBoxDelegate
 
@@ -28,8 +28,6 @@ class DataFrameView(QtWidgets.QTableView):
 
         if self.model() is None:
             return
-
-        idx = self.currentIndex()
 
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
