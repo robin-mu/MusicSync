@@ -43,7 +43,7 @@ class DataFrameTableModel(QAbstractTableModel):
         if not index.isValid():
             return None
 
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+        if role in (QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.EditRole):
             return self.display_data(self.df.iloc[index.row(), index.column()])
         elif role == QtCore.Qt.ItemDataRole.BackgroundRole:
             return self.df.iloc[index.row(), index.column()]

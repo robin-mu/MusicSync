@@ -66,10 +66,13 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
 
     def editorEvent(self, event, model, option, index, /):
         if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
-            sm = self.view.selectionModel()
-            if sm is not None and (sm.isSelected(index) or sm.currentIndex() == index):
-                self.view.edit(index)
-                return True
+            self.view.edit(index)
+            return True
+
+            # sm = self.view.selectionModel()
+            # if sm is not None and (sm.isSelected(index) or sm.currentIndex() == index):
+            #     self.view.edit(index)
+            #     return True
 
         return super().editorEvent(event, model, option, index)
 
@@ -104,6 +107,9 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
 
     def setModelData(self, editor: QComboBox, model, index):
         model.setData(index, self.to_model_data(editor.currentText()))
+
+    def updateEditorGeometry(self, editor, option, index, /):
+        editor.setGeometry(option.rect)
 
     def eventFilter(self, obj, event):
         if obj is self:
