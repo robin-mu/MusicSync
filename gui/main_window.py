@@ -540,6 +540,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             script.show_format_options = self.format_options_group_box.isChecked()
             script.default_format_as_title = self.format_as_title_checkbox.isChecked()
             script.default_remove_brackets = self.remove_brackets_checkbox.isChecked()
+            script.local_field = self.local_field_checkbox.isChecked()
+            script.overwrite_metadata_table = self.overwrite_metadata_checkbox.isChecked()
         script.script = self.script_editor.toPlainText()
 
     def script_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
@@ -557,6 +559,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.format_options_group_box.setChecked(script.show_format_options)
             self.format_as_title_checkbox.setChecked(script.default_format_as_title)
             self.remove_brackets_checkbox.setChecked(script.default_remove_brackets)
+            self.local_field_checkbox.setChecked(script.local_field)
+            self.overwrite_metadata_checkbox.setChecked(script.overwrite_metadata_table)
+
         self.script_editor.setPlainText(script.script)
 
     def closeEvent(self, event: QCloseEvent):
@@ -716,10 +721,3 @@ class TreeContextMenu(QMenu):
 
     def toggle_subfolder(self):
         self.item.save_to_subfolder = not self.item.save_to_subfolder
-
-
-class MetadataSuggestionsTableStyle(QtWidgets.QProxyStyle):
-    def drawPrimitive(self, element, option, painter, widget=None):
-        if element == QStyle.PrimitiveElement.PE_IndicatorItemViewItemDrop and not option.rect.isNull():
-            option.rect.setHeight(1)
-        super().drawPrimitive(element, option, painter, widget)

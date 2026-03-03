@@ -233,7 +233,7 @@ class Script(XmlObject):
 
     @staticmethod
     def from_xml(el: Element) -> 'XmlObject':
-        script = '\n'.join(' ' * int(c.attrib.get('indent', 0)) + c.text for c in el)
+        script = '\n'.join(' ' * int(c.attrib.get('indent', 0)) + (c.text or '') for c in el)
         if el.tag == 'MetadataSuggestionsScript':
             return MetadataSuggestionsScript(**(el.attrib | {'script': script}))
         raise AttributeError('Unknown Script type')
@@ -246,6 +246,7 @@ class Script(XmlObject):
 
         el = et.Element(self.__class__.__name__, attrib=attrs)
         for line in self.script.split('\n'):
+            line = line.replace('\t', ' ' * 10)
             indent = len(line) - len(line.lstrip(' '))
             line_el = et.Element('ScriptLine', indent=str(indent))
             line_el.text = line.lstrip(' ')
@@ -263,6 +264,8 @@ class MetadataSuggestionsScript(Script):
     show_format_options: bool = False
     default_format_as_title: bool = False
     default_remove_brackets: bool = False
+    local_field: bool = False
+    overwrite_metadata_table: bool = False
 
     script_type: ClassVar[str] = 'Metadata suggestions'
 
@@ -275,12 +278,18 @@ class MetadataSuggestionsScript(Script):
             self.default_format_as_title = self.default_format_as_title == 'True'
         if isinstance(self.default_remove_brackets, str):
             self.default_remove_brackets = self.default_remove_brackets == 'True'
+        if isinstance(self.local_field, str):
+            self.local_field = self.local_field == 'True'
+        if isinstance(self.overwrite_metadata_table, str):
+            self.overwrite_metadata_table = self.overwrite_metadata_table == 'True'
 
     def update_xml_attrs(self, attrs) -> str:
         attrs['timed_data'] = str(self.timed_data)
         attrs['show_format_options'] = str(self.show_format_options)
         attrs['default_format_as_title'] = str(self.default_format_as_title)
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
+        attrs['local_field'] = str(self.local_field)
+        attrs['overwrite_metadata_table'] = str(self.overwrite_metadata_table)
 
 
 @dataclass
