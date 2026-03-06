@@ -51,6 +51,7 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_bookmark_file = kwargs.get('sync_bookmark_file', '')
         self.sync_bookmark_path = kwargs.get('sync_bookmark_path', '')
         self.sync_bookmark_title_as_url_name = kwargs.get('sync_bookmark_title_as_url_name', False)
+        self.sync_delete_files = kwargs.get('sync_delete_files', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
         self.enabled_scripts = kwargs.get('enabled_scripts', [])
@@ -96,66 +97,65 @@ class CollectionItem(XmlObjectModelItem):
         return os.path.join(folder, track.filename)
 
 
-    def in_auto_concat(self, url: str) -> bool:
-        return self.to_xml_object().in_auto_concat(url)
-
-
 class CollectionUrlItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
+        self.name = kwargs.get('name', '')
         self.url: str = kwargs.get('url', '')
         self.tracks: dict[str, Track] = kwargs.get('tracks', {})
         self.excluded: bool = kwargs.get('excluded', False)
         self.concat: bool = kwargs.get('concat', False)
         self.is_playlist: bool | None = kwargs.get('is_playlist', None)
-        self.resolved: bool = kwargs.get('resolved', False)
         self.save_to_subfolder: bool = kwargs.get('save_to_subfolder', False)
 
-        name = kwargs.get('name', '')
-        if not self.resolved:
+        if self.name:
+            self.setText(self.name)
+        else:
             f = self.font()
             f.setItalic(True)
             self.setFont(f)
 
-            name = self.url
+            self.setText(self.url)
 
-        self.setText(name)
         self.setIcon(QIcon.fromTheme('folder-remote'))
-
-    def resolve(self, name: str):
-        self.setText(name)
-        f = self.font()
-        f.setItalic(False)
-        self.setFont(f)
-        self.resolved = True
 
     @staticmethod
     def from_xml_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
         return CollectionUrlItem(**(vars(collection_url) | {'tracks': deepcopy(collection_url.tracks)}))
 
     def to_xml_object(self):
-        name = self.text() if self.resolved else ''
-        url = self.url if self.resolved else self.text()
+        resolved = not self.font().italic()
+
+        name = self.text() if resolved else ''
+        url = self.url if resolved else self.text()
 
         attr = vars(self).copy()
+        attr.pop('name')
         attr.pop('url')
 
         return CollectionUrl(name=name, url=url, **attr)
 
     def update(self, collection_url: CollectionUrl):
+        self.name = collection_url.name
         self.url = collection_url.url
         self.tracks = collection_url.tracks
         self.excluded = collection_url.excluded
         self.concat = collection_url.concat
         self.is_playlist = collection_url.is_playlist
 
-        if not self.resolved:
-            self.resolve(collection_url.name)
+        f = self.font()
+        if self.name:
+            f.setItalic(False)
+            self.setText(self.name)
+        else:
+            f.setItalic(True)
+            self.setText(self.url)
 
+        self.setFont(f)
 
 class LibraryModel(XmlObjectModel):
-    @classmethod
-    def item_from_xml(cls, el: Element) -> XmlObjectModelItem:
+    @staticmethod
+    def item_from_xml(el: Element) -> XmlObjectModelItem:
         if el.tag == 'Folder':
             return FolderItem.from_xml_object(Folder.from_xml(el))
         elif el.tag == 'Collection':
@@ -165,8 +165,8 @@ class LibraryModel(XmlObjectModel):
 
         raise ValueError(f'Unknown tag {el.tag}')
 
-    @classmethod
-    def validate_drop(cls, parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
+    @staticmethod
+    def validate_drop(parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
         if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
             return False
 

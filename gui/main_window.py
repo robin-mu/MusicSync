@@ -18,13 +18,13 @@ from PySide6.QtWidgets import (
 )
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection, Script, MetadataSuggestionsScript
+    Collection, Script, MetadataSuggestionsScript, PathComponent
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from .models.scripts_model import ScriptsModel, ScriptsTableColumn, CheckboxDelegate
-from .models.sync_action_combobox_model import SyncActionComboboxModel
+from .models.gui_combobox_model import ActionComboboxItemModel
 from .threads import ThreadingWorker
 
 
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 [TrackSyncStatus.ADDED_TO_SOURCE, TrackSyncStatus.NOT_DOWNLOADED, TrackSyncStatus.REMOVED_FROM_SOURCE,
                  TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
         for box, status in self.action_combo_boxes.items():
-            box.setModel(SyncActionComboboxModel(status))
+            box.setModel(ActionComboboxItemModel(status))
             box.highlighted[int].connect(lambda index, box=box: self.statusbar.showMessage(
                 box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
             box.view().viewport().installEventFilter(self)
@@ -202,7 +202,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_current_sync_folder(selected_collection.sync_bookmark_file,
                                             selected_collection.sync_bookmark_path,
-                                            selected_collection.sync_bookmark_title_as_url_name)
+                                            selected_collection.sync_bookmark_title_as_url_name,
+                                            selected_collection.sync_delete_files)
 
             for box, status in self.action_combo_boxes.items():
                 box.setCurrentIndex(box.findText(selected_collection.sync_actions[status].gui_string))
@@ -242,6 +243,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item.auto_concat_urls = self.settings_auto_concat_checkbox.isChecked()
         item.excluded_yt_dlp_fields = self.settings_excluded_yt_dlp_fields.text()
         item.yt_dlp_options = self.settings_yt_dlp_options.text()
+
+        item.sync_bookmark_title_as_url_name = self.settings_bookmark_title_as_url_name_checkbox.isChecked()
+        item.sync_delete_files = self.settings_bookmark_delete_files_checkbox.isChecked()
 
         item.sync_actions = {
             TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(
@@ -283,7 +287,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return current_collection
 
     def update_current_sync_folder(self, file: str, path: list[Collection.PathComponent] | None = None,
-                                   set_url_name=False):
+                                   set_url_name=False, delete=False):
         if path is None:
             path = []
 
@@ -291,12 +295,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection.sync_bookmark_file = file
         current_collection.sync_bookmark_path = path or []
         current_collection.sync_bookmark_title_as_url_name = set_url_name
+        current_collection.sync_delete_files = delete
+
+        self.settings_bookmark_title_as_url_name_checkbox.setChecked(set_url_name)
+        self.settings_bookmark_delete_files_checkbox.setChecked(delete)
 
         if file:
+            font = self.settings_bookmark_label.font()
+            font.setItalic(False)
+            self.settings_bookmark_label.setFont(font)
+
             text = f'File: {file}\nFolder: {"/".join([e[1] for e in path])}'
             self.settings_bookmark_label.setText(text)
+
+            self.settings_bookmark_title_as_url_name_checkbox.setEnabled(True)
+            self.settings_bookmark_delete_files_checkbox.setEnabled(True)
         else:
-            self.settings_bookmark_label.setText('<html><head/><body>File: <span style=" font-style:italic;">Not syncing<br/></span>Folder: <span style=" font-style:italic;">Not syncing</span></body></html>')
+            self.settings_bookmark_label.setText('<html><head/><body><p><span style="font-style:normal">File: </span><span style=" font-style:italic;">Not syncing<br/></span><span style="font-style:normal">Folder: </span><span style=" font-style:italic;">Not syncing</span></p></body></html>')
+            self.settings_bookmark_title_as_url_name_checkbox.setEnabled(False)
+            self.settings_bookmark_delete_files_checkbox.setEnabled(False)
 
     def change_sync_folder(self):
         def selection_changed(selected: QItemSelection, _: QItemSelection):
@@ -315,7 +332,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             idx = bookmark_window.bookmark_tree_widget.selectedIndexes()[0]
             folder = []
             while (item := bookmark_window.bookmark_tree_widget.itemFromIndex(idx)) is not None:
-                folder.append(Collection.PathComponent(id=item.text(3), name=item.text(0)))
+                folder.append(PathComponent(id=item.text(3), name=item.text(0)))
                 idx = idx.parent()
 
             self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())

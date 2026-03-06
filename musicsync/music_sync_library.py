@@ -1,7 +1,7 @@
 import os
 import pickle
-import re
 import xml.etree.ElementTree as et
+from abc import abstractmethod
 from collections import namedtuple
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
@@ -15,8 +15,118 @@ from pandas import DataFrame
 from yt_dlp import MetadataParserPP, YoutubeDL
 
 import musicsync.downloader as dl
-from .xml_object import XmlObject
 from .utils import classproperty
+from .xml_object import XmlObject
+
+class GuiStrEnum(StrEnum):
+    def __new__(cls, value, gui_string, gui_status_tip):
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._sort_key = len(cls.__members__)
+        obj._gui_string = gui_string
+        obj._gui_status_tip = gui_status_tip
+        return obj
+
+    @property
+    def sort_key(self) -> int:
+        return self._sort_key
+
+    @property
+    def gui_string(self) -> str:
+        return self._gui_string
+
+    @property
+    def gui_status_tip(self) -> str:
+        return self._gui_status_tip
+
+
+class TrackSyncStatus(GuiStrEnum):
+    ADDED_TO_SOURCE = auto(), 'Track added to URL', 'Track is present online, but was not present in the previous sync.'
+    """
+    Track is present online, but was not present in the previous sync.
+    """
+    NOT_DOWNLOADED = auto(), 'Track not downloaded', 'Track is present online, was also present in previous sync, but the corresponding file does not exist.'
+    """
+    Track is present online, was also present in previous sync, but the corresponding file does not exist.
+    """
+    REMOVED_FROM_SOURCE = auto(), 'Track removed from URL', 'Track is not present online, but was present in the previous sync.'
+    """
+    Track is not present online, but was present in the previous sync.
+    """
+    LOCAL_FILE = auto(), 'File only exists locally', 'The file is not marked as permanently downloaded and does not correspond to a track found online.'
+    """
+    The file is not marked as permanently downloaded and does not correspond to a track found online.
+    """
+    PERMANENTLY_DOWNLOADED = auto(), 'File permanently downloaded', 'The file is marked as permanently downloaded (even though its corresponding track might not exist anymore).'
+    """
+    The file is marked as permanently downloaded (even though its corresponding track might not exist anymore).
+    """
+    DOWNLOADED = auto(), 'File downloaded', 'Track is present online and the corresponding file exists.'
+    """
+    Track is present online and the corresponding file exists.
+    """
+
+    @classproperty
+    def ACTION_OPTIONS(self):
+        return {
+            TrackSyncStatus.ADDED_TO_SOURCE: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
+                                              TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.NOT_DOWNLOADED: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
+                                             TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.REMOVED_FROM_SOURCE: [TrackSyncAction.DELETE, TrackSyncAction.DO_NOTHING,
+                                                  TrackSyncAction.KEEP_PERMANENTLY,
+                                                  TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.LOCAL_FILE: [TrackSyncAction.DELETE, TrackSyncAction.DO_NOTHING,
+                                         TrackSyncAction.KEEP_PERMANENTLY, TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.PERMANENTLY_DOWNLOADED: [TrackSyncAction.DO_NOTHING,
+                                                     TrackSyncAction.REMOVE_FROM_PERMANENTLY_DOWNLOADED,
+                                                     TrackSyncAction.DECIDE_INDIVIDUALLY],
+            TrackSyncStatus.DOWNLOADED: [TrackSyncAction.DO_NOTHING, TrackSyncAction.DOWNLOAD,
+                                         TrackSyncAction.REDOWNLOAD_METADATA, TrackSyncAction.DECIDE_INDIVIDUALLY],
+        }
+
+
+class TrackSyncAction(GuiStrEnum):
+    DOWNLOAD = auto(), 'Download', 'Download the file.'
+    """
+    Download the file.
+    """
+    DELETE = auto(), 'Delete', 'Delete the file and remove the track entry from the URL.'
+    """
+    Delete the file.
+    """
+    DO_NOTHING = auto(), 'Do nothing', 'Don\'t delete or download a file and don\'t change the configuration.'
+    """
+    Don't delete or download a file and don't change the configuration. Effectively does nothing.
+    """
+    KEEP_PERMANENTLY = auto(), 'Mark as permanently downloaded', 'Don\'t delete the file and mark it as permanently downloaded. This means the file won\'t be marked as "not downloaded" or "removed from collection" in the future.'
+    """
+    Don't delete the file and mark it as permanently downloaded. This means the file won't be marked as "not downloaded" or "removed from collection" in the future.
+    """
+    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Mark as not permanently downloaded', 'Mark the file as not permanently downloaded (but don\'t delete the file).'
+    """
+    Mark the file as not permanently downloaded (but don't delete the file).
+    """
+    REDOWNLOAD_METADATA = auto(), 'Redownload metadata', 'Download metadata again, but don\'t download the actual file again.'
+    """
+    Download metadata again, but don't download the actual file again.
+    """
+    DECIDE_INDIVIDUALLY = auto(), 'Decide individually', 'You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".'
+    """
+    You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".
+    """
+
+class MetadataStatus(GuiStrEnum):
+    NEW = auto(), 'New', 'This Track was just downloaded and no custom metadata has been saved yet.'
+    REDOWNLOADED = auto(), 'Metadata redownloaded', 'This Track was just downloaded with the "Redownload metadata" action, and no metadata has been selected since then.'
+    AUTOMATICALLY = auto(), 'Selected automatically', 'The metadata for this track has been selected automatically (i.e. without GUI).'
+    MANUALLY = auto(), 'Selected manually', 'The metadata for this track has been selected manually (i.e. in the GUI).'
+
+
+class DownloadScriptWhen(GuiStrEnum):
+    PRE_PROCESS = auto(), 'Pre-process', 'After yt-dlp extracted the info dict, before the video passes the download filter (i.e. this script will be executed for Tracks with action "Download" or "Redownload metadata").'
+    AFTER_FILTER = auto(), 'After filter', 'After the Track passes yt-dlp\'s filter. This script will only be executed for Tracks with action "Download" that weren\'t filtered by a "Pre-process" script.'
+    #VIDEO = auto(),
 
 
 @dataclass
@@ -106,122 +216,6 @@ class Folder(XmlObject):
         return el
 
 
-class TrackSyncStatus(StrEnum):
-    ADDED_TO_SOURCE = auto(), 'Track added to URL', 'Track is present online, but was not present in the previous sync.'
-    """
-    Track is present online, but was not present in the previous sync.
-    """
-    NOT_DOWNLOADED = auto(), 'Track not downloaded', 'Track is present online, was also present in previous sync, but the corresponding file does not exist.'
-    """
-    Track is present online, was also present in previous sync, but the corresponding file does not exist.
-    """
-    REMOVED_FROM_SOURCE = auto(), 'Track removed from URL', 'Track is not present online, but was present in the previous sync.'
-    """
-    Track is not present online, but was present in the previous sync.
-    """
-    LOCAL_FILE = auto(), 'File only exists locally', 'The file is not marked as permanently downloaded and does not correspond to a track found online.'
-    """
-    The file is not marked as permanently downloaded and does not correspond to a track found online.
-    """
-    PERMANENTLY_DOWNLOADED = auto(), 'File permanently downloaded', 'The file is marked as permanently downloaded (even though its corresponding track might not exist anymore).'
-    """
-    The file is marked as permanently downloaded (even though its corresponding track might not exist anymore).
-    """
-    DOWNLOADED = auto(), 'File downloaded', 'Track is present online and the corresponding file exists.'
-    """
-    Track is present online and the corresponding file exists.
-    """
-
-    @classproperty
-    def ACTION_OPTIONS(self):
-        return {
-            TrackSyncStatus.ADDED_TO_SOURCE: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
-                                              TrackSyncAction.DECIDE_INDIVIDUALLY],
-            TrackSyncStatus.NOT_DOWNLOADED: [TrackSyncAction.DOWNLOAD, TrackSyncAction.DO_NOTHING,
-                                             TrackSyncAction.DECIDE_INDIVIDUALLY],
-            TrackSyncStatus.REMOVED_FROM_SOURCE: [TrackSyncAction.DELETE, TrackSyncAction.DO_NOTHING,
-                                                  TrackSyncAction.KEEP_PERMANENTLY,
-                                                  TrackSyncAction.DECIDE_INDIVIDUALLY],
-            TrackSyncStatus.LOCAL_FILE: [TrackSyncAction.DELETE, TrackSyncAction.DO_NOTHING,
-                                         TrackSyncAction.KEEP_PERMANENTLY, TrackSyncAction.DECIDE_INDIVIDUALLY],
-            TrackSyncStatus.PERMANENTLY_DOWNLOADED: [TrackSyncAction.DO_NOTHING,
-                                                     TrackSyncAction.REMOVE_FROM_PERMANENTLY_DOWNLOADED,
-                                                     TrackSyncAction.DECIDE_INDIVIDUALLY],
-            TrackSyncStatus.DOWNLOADED: [TrackSyncAction.DO_NOTHING, TrackSyncAction.DOWNLOAD,
-                                         TrackSyncAction.REDOWNLOAD_METADATA, TrackSyncAction.DECIDE_INDIVIDUALLY],
-        }
-
-    def __new__(cls, value, gui_string, gui_status_tip):
-        obj = str.__new__(cls, value)
-        obj._value_ = value
-        obj._sort_key = len(cls.__members__)
-        obj._gui_string = gui_string
-        obj._gui_status_tip = gui_status_tip
-        return obj
-
-    @property
-    def sort_key(self) -> int:
-        return self._sort_key
-
-    @property
-    def gui_string(self) -> str:
-        return self._gui_string
-
-    @property
-    def gui_status_tip(self) -> str:
-        return self._gui_status_tip
-
-
-class TrackSyncAction(StrEnum):
-    DOWNLOAD = auto(), 'Download', 'Download the file.'
-    """
-    Download the file.
-    """
-    DELETE = auto(), 'Delete', 'Delete the file and remove the track entry from the URL.'
-    """
-    Delete the file.
-    """
-    DO_NOTHING = auto(), 'Do nothing', 'Don\'t delete or download a file and don\'t change the configuration.'
-    """
-    Don't delete or download a file and don't change the configuration. Effectively does nothing.
-    """
-    KEEP_PERMANENTLY = auto(), 'Mark as permanently downloaded', 'Don\'t delete the file and mark it as permanently downloaded. This means the file won\'t be marked as "not downloaded" or "removed from collection" in the future.'
-    """
-    Don't delete the file and mark it as permanently downloaded. This means the file won't be marked as "not downloaded" or "removed from collection" in the future.
-    """
-    REMOVE_FROM_PERMANENTLY_DOWNLOADED = auto(), 'Mark as not permanently downloaded', 'Mark the file as not permanently downloaded (but don\'t delete the file).'
-    """
-    Mark the file as not permanently downloaded (but don't delete the file).
-    """
-    REDOWNLOAD_METADATA = auto(), 'Redownload metadata', 'Download metadata again, but don\'t download the actual file again.'
-    """
-    Download metadata again, but don't download the actual file again.
-    """
-    DECIDE_INDIVIDUALLY = auto(), 'Decide individually', 'You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".'
-    """
-    You have to pick an action in each case. Syncing can only start when none of the selected actions are "Decide individually".
-    """
-
-    def __new__(cls, value, gui_string, gui_status_tip):
-        obj = str.__new__(cls, value)
-        obj._value_ = value
-        obj._sort_key = len(cls.__members__)
-        obj._gui_string = gui_string
-        obj._gui_status_tip = gui_status_tip
-        return obj
-
-    @property
-    def sort_key(self) -> int:
-        return self._sort_key
-
-    @property
-    def gui_string(self) -> str:
-        return self._gui_string
-
-    @property
-    def gui_status_tip(self) -> str:
-        return self._gui_status_tip
-
 
 @dataclass
 class Script(XmlObject):
@@ -254,8 +248,9 @@ class Script(XmlObject):
 
         return el
 
+    @abstractmethod
     def update_xml_attrs(self, attrs) -> str:
-        raise NotImplementedError('A script can only be a subclass of Script.')
+        pass
 
 @dataclass
 class MetadataSuggestionsScript(Script):
@@ -290,6 +285,10 @@ class MetadataSuggestionsScript(Script):
         attrs['default_remove_brackets'] = str(self.default_remove_brackets)
         attrs['local_field'] = str(self.local_field)
         attrs['overwrite_metadata_table'] = str(self.overwrite_metadata_table)
+
+@dataclass
+class DownloadScript(Script):
+    pass
 
 
 @dataclass
@@ -392,6 +391,7 @@ class Collection(XmlObject):
     sync_bookmark_file: str = ''
     sync_bookmark_path: list[PathComponent] = field(default_factory=list)
     sync_bookmark_title_as_url_name: bool = False
+    sync_delete_files: bool = False
 
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS)
 
@@ -406,6 +406,8 @@ class Collection(XmlObject):
             self.save_playlists_to_subfolders = self.save_playlists_to_subfolders == 'True'
         if isinstance(self.sync_bookmark_title_as_url_name, str):
             self.sync_bookmark_title_as_url_name = self.sync_bookmark_title_as_url_name == 'True'
+        if isinstance(self.sync_delete_files, str):
+            self.sync_delete_files = self.sync_delete_files == 'True'
         if isinstance(self.exclude_after_download, str):
             self.exclude_after_download = self.exclude_after_download == 'True'
         if isinstance(self.auto_concat_urls, str):
@@ -418,6 +420,7 @@ class Collection(XmlObject):
             if child.tag == 'BookmarkSync':
                 kwargs['sync_bookmark_file'] = child.attrib['file']
                 kwargs['sync_bookmark_title_as_url_name'] = child.attrib['title_as_url_name']
+                kwargs['sync_delete_files'] = child.attrib['delete_files']
                 kwargs['sync_bookmark_path'] = []
                 for path_component in child:
                     kwargs['sync_bookmark_path'].append(PathComponent(**path_component.attrib))
@@ -439,6 +442,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_file')
         attrs.pop('sync_bookmark_path')
         attrs.pop('sync_bookmark_title_as_url_name')
+        attrs.pop('sync_delete_files')
         attrs.pop('sync_actions')
         attrs.pop('enabled_scripts')
         attrs.pop('downloader')
@@ -453,7 +457,8 @@ class Collection(XmlObject):
 
         if self.sync_bookmark_file:
             bookmark_sync = et.Element('BookmarkSync', file=self.sync_bookmark_file,
-                                       title_as_url_name=str(self.sync_bookmark_title_as_url_name))
+                                       title_as_url_name=str(self.sync_bookmark_title_as_url_name),
+                                       delete_files=str(self.sync_delete_files))
             for idx, folder in self.sync_bookmark_path:
                 bookmark_sync.append(et.Element('PathComponent', id=idx, name=folder))
             el.append(bookmark_sync)
@@ -524,7 +529,6 @@ class CollectionUrl(XmlObject):
     save_to_subfolder: bool = False
     is_playlist: bool | None = None
     tracks: dict[str, 'Track'] = field(default_factory=dict)
-    resolved: bool = True
 
     def __post_init__(self):
         if isinstance(self.excluded, str):
@@ -536,8 +540,6 @@ class CollectionUrl(XmlObject):
                 self.is_playlist = None
             else:
                 self.is_playlist = self.is_playlist == 'True'
-        if isinstance(self.resolved, str):
-            self.resolved = self.resolved == 'True'
         if isinstance(self.save_to_subfolder, str):
             self.save_to_subfolder = self.save_to_subfolder == 'True'
 
@@ -556,7 +558,6 @@ class CollectionUrl(XmlObject):
         attrs['excluded'] = str(self.excluded)
         attrs['concat'] = str(self.concat)
         attrs['is_playlist'] = str(self.is_playlist)
-        attrs['resolved'] = str(self.resolved)
         attrs['save_to_subfolder'] = str(self.save_to_subfolder)
 
         el = et.Element('CollectionUrl', **attrs)
@@ -566,28 +567,6 @@ class CollectionUrl(XmlObject):
 
     def __hash__(self):
         return hash(id(self))
-
-
-class MetadataStatus(StrEnum):
-    NEW = auto(), 'New'
-    REDOWNLOADED = auto(), 'Metadata redownloaded'
-    AUTOMATICALLY = auto(), 'Selected automatically'
-    MANUALLY = auto(), 'Selected manually'
-
-    def __new__(cls, value, gui_string):
-        obj = str.__new__(cls, value)
-        obj._value_ = value
-        obj._sort_key = len(cls.__members__)
-        obj._gui_string = gui_string
-        return obj
-
-    @property
-    def sort_key(self) -> int:
-        return self._sort_key
-
-    @property
-    def gui_string(self) -> str:
-        return self._gui_string
 
 
 @dataclass
@@ -606,16 +585,16 @@ class Track(XmlObject):
 
     @staticmethod
     def from_xml(el: Element) -> 'Track':
-        return Track(url=el.attrib['url'], status=TrackSyncStatus.__members__[el.attrib['status']],
+        return Track(url=el.attrib['url'], status=TrackSyncStatus(el.attrib['status']),
                      filename=el.attrib['path'], title=el.attrib['title'], playlist_index=el.attrib['playlist_index'],
                      permanently_downloaded=el.attrib['permanently_downloaded'],
-                     metadata_status=MetadataStatus.__members__[el.attrib['metadata_status']])
+                     metadata_status=MetadataStatus(el.attrib['metadata_status']))
 
     def to_xml(self) -> Element:
-        return et.Element('Track', url=self.url, status=self.status.name, path=self.filename,
+        return et.Element('Track', url=self.url, status=self.status, path=self.filename,
                           permanently_downloaded=str(self.permanently_downloaded),
                           title=self.title, playlist_index=self.playlist_index,
-                          metadata_status=self.metadata_status.name)
+                          metadata_status=self.metadata_status)
 
 
 if __name__ == '__main__':

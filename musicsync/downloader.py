@@ -101,12 +101,14 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         if collection.filename_format:
             params['outtmpl']['default'] = collection.filename_format
 
-        # if file extension is audio, extract audio
+        # TODO: if file extension is audio, extract audio
         if True:
-            params['postprocessors'].append({'key': 'FFmpegExtractAudio',
-             'nopostoverwrites': False,
-             'preferredcodec': self.collection.file_extension,
-             'preferredquality': '5'})
+            params['postprocessors'].append({
+                'key': 'FFmpegExtractAudio',
+                'nopostoverwrites': False,
+                'preferredcodec': collection.file_extension or 'best',
+                'preferredquality': '5'
+            })
 
             params['format'] = 'ba/b'
 
