@@ -14,17 +14,17 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QTreeView,
     QTreeWidget,
-    QTreeWidgetItem, QStyle, QHeaderView,
-)
+    QTreeWidgetItem, )
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection, Script, MetadataSuggestionsScript, PathComponent
+    Collection, Script, PathComponent
+from musicsync.scripting.script_types import MetadataSuggestionsScript
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
+from .models.gui_combobox_model import ActionComboboxItemModel
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from .models.scripts_model import ScriptsModel, ScriptsTableColumn, CheckboxDelegate
-from .models.gui_combobox_model import ActionComboboxItemModel
 from .threads import ThreadingWorker
 
 

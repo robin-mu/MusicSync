@@ -1,4 +1,5 @@
 import logging
+from enum import StrEnum
 
 
 class classproperty:
@@ -6,6 +7,28 @@ class classproperty:
         self.func = func
     def __get__(self, instance, owner):
         return self.func(owner)
+
+
+class GuiStrEnum(StrEnum):
+    def __new__(cls, value, gui_string, gui_status_tip):
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._sort_key = len(cls.__members__)
+        obj._gui_string = gui_string
+        obj._gui_status_tip = gui_status_tip
+        return obj
+
+    @property
+    def sort_key(self) -> int:
+        return self._sort_key
+
+    @property
+    def gui_string(self) -> str:
+        return self._gui_string
+
+    @property
+    def gui_status_tip(self) -> str:
+        return self._gui_status_tip
 
 class Logger:
     logger = logging.getLogger('MusicSync')
