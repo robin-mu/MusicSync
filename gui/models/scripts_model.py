@@ -1,13 +1,11 @@
-from enum import IntEnum
 from typing import cast
 
-from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt, QModelIndex
 from PySide6.QtGui import QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QCheckBox
 
 from musicsync.music_sync_library import Script
 from musicsync.scripting.script_types import ScriptType
+
 
 class ScriptTypeItem(QStandardItem):
     def __init__(self, script_type: ScriptType):

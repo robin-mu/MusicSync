@@ -54,7 +54,7 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_delete_files = kwargs.get('sync_delete_files', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
-        self.enabled_scripts = kwargs.get('enabled_scripts', [])
+        self.scripts = kwargs.get('scripts', [])
         self.url_name_format = kwargs.get('url_name_format', '')
         self.auto_concat_urls = kwargs.get('auto_concat_urls', False)
         self.excluded_yt_dlp_fields = kwargs.get('excluded_yt_dlp_fields', Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS)

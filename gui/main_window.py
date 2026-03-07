@@ -83,6 +83,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.script_add_button.pressed.connect(self.add_script)
         self.script_remove_button.pressed.connect(self.remove_script)
+        self.script_up_button.pressed.connect(functools.partial(self.move_script, direction=-1))
+        self.script_down_button.pressed.connect(functools.partial(self.move_script, direction=1))
 
         self.threads: list[QThread] = []
         self.workers: list[ThreadingWorker] = []
@@ -258,7 +260,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        item.enabled_scripts = [it.script.name for it in self.scripts_table.model().items if it.checkState() == Qt.CheckState.Checked]
+        item.scripts = [it.script.name for it in self.scripts_table.model().items if it.checkState() == Qt.CheckState.Checked]
         # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
         self.save_script()
@@ -460,7 +462,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
 
         # Scripts table
-        self.scripts_table.model().update_checkboxes(current_collection.enabled_scripts)
+        self.scripts_table.model().update_checkboxes(current_collection.scripts)
 
         # file tags
         #self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
@@ -528,6 +530,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
 
         self.scripts_table.model().remove_script(selection[0])
+
+    def move_script(self, direction: int):
+        selection = self.scripts_table.selectedIndexes()
+        if len(selection) == 0:
+            return
+
+        idx = selection[0]
+        parent_idx = idx.parent()
+        if not parent_idx.isValid():
+            return
+
+        parent_item = self.scripts_table.model().itemFromIndex(parent_idx)
+        row = idx.row()
+        new_row = row + direction
+
+        if new_row < 0 or new_row >= parent_item.rowCount():
+            return
+
+        taken = parent_item.takeRow(row)
+        parent_item.insertRow(new_row, taken)
+
+        new_index = self.scripts_table.model().index(new_row, idx.column(), parent_idx)
+        self.scripts_table.setCurrentIndex(new_index)
+        self.scripts_table.scrollTo(new_index)
+
 
     def save_script(self, selection: QItemSelection | None = None):
         if selection is None:

@@ -203,6 +203,7 @@ class FileTag(XmlObject):
 
 
 PathComponent = namedtuple('PathComponent', ['id', 'name'])
+ScriptReference = namedtuple('ScriptReference', ['name', 'enabled', 'priority'])
 
 @dataclass
 class Collection(XmlObject):
@@ -293,7 +294,7 @@ class Collection(XmlObject):
 
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS)
 
-    enabled_scripts: list[str] = field(default_factory=list)
+    scripts: list[str] = field(default_factory=list)
 
     _urls: list['CollectionUrl'] = field(default_factory=list)
 
@@ -326,11 +327,11 @@ class Collection(XmlObject):
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':
                 kwargs['_urls'].append(CollectionUrl.from_xml(child))
-            elif child.tag == 'EnabledScripts':
-                kwargs['enabled_scripts'] = []
+            elif child.tag == 'ScriptSettings':
+                kwargs['scripts'] = []
                 for ref in child:
                     if ref.tag == 'ScriptRef':
-                        kwargs['enabled_scripts'].append(ref.attrib['name'])
+                        kwargs['scripts'].append(ref.attrib['name'])
 
         return Collection(**(kwargs | el.attrib))
 
@@ -342,7 +343,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_title_as_url_name')
         attrs.pop('sync_delete_files')
         attrs.pop('sync_actions')
-        attrs.pop('enabled_scripts')
+        attrs.pop('scripts')
         attrs.pop('downloader')
         attrs.pop('excluded_yt_dlp_fields')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
@@ -364,9 +365,9 @@ class Collection(XmlObject):
         if self.sync_actions != Collection.DEFAULT_SYNC_ACTIONS:
             el.append(et.Element('SyncActions', **self.sync_actions))
 
-        if self.enabled_scripts:
-            scripts = et.Element('EnabledScripts')
-            for ref in self.enabled_scripts:
+        if self.scripts:
+            scripts = et.Element('ScriptSettings')
+            for ref in self.scripts:
                 scripts.append(et.Element('ScriptRef', attrib={'name': ref}))
             el.append(scripts)
 
