@@ -3,7 +3,7 @@ from copy import deepcopy
 
 import pandas as pd
 from PySide6 import QtCore, QtWidgets
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QModelIndex, QThread
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QModelIndex, QThread, QItemSelectionModel
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QTreeView,
     QTreeWidget,
-    QTreeWidgetItem, )
+    QTreeWidgetItem, QHeaderView, )
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
     Collection, Script, PathComponent
@@ -24,7 +24,7 @@ from .main_gui import Ui_MainWindow
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
 from .models.gui_combobox_model import ActionComboboxItemModel
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
-from .models.scripts_model import ScriptsModel, ScriptsTableColumn, CheckboxDelegate
+from .models.scripts_model import ScriptsModel, ScriptItem
 from .threads import ThreadingWorker
 
 
@@ -76,12 +76,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings_filename_format_label.mousePressEvent = self.open_doc_url
 
         # Metadata suggestions tab
-        self.scripts_table.setModel(ScriptsModel(deepcopy(self.treeView.model().scripts), parent=self))
-        self.scripts_table.setItemDelegateForColumn(ScriptsTableColumn.ENABLED, CheckboxDelegate(self))
-        for row in range(self.scripts_table.model().rowCount()):
-            self.scripts_table.openPersistentEditor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
-            self.scripts_table.itemDelegateForColumn(ScriptsTableColumn.ENABLED).refresh_editor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
-        self.scripts_table.resizeColumnToContents(0)
+        self.scripts_table.setModel(ScriptsModel(deepcopy(self.treeView.model().scripts), window=self))
+        self.scripts_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.scripts_table.expandAll()
         self.scripts_table.selectionModel().selectionChanged.connect(self.script_selection_changed)
 
         self.script_add_button.pressed.connect(self.add_script)
@@ -147,7 +144,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def save_library(self):
         self.save_settings()
-        self.treeView.model().scripts = deepcopy(self.scripts_table.model().scripts)
         if self.treeView.model().path:
             self.treeView.model().to_pickle()
             self.treeView.model().to_xml()
@@ -262,7 +258,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        item.enabled_scripts = [f.name for f in self.scripts_table.model().scripts if f.enabled]
+        item.enabled_scripts = [it.script.name for it in self.scripts_table.model().items if it.checkState() == Qt.CheckState.Checked]
         # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
         self.save_script()
@@ -463,12 +459,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         current_collection = self.get_selected_collection()
 
-        # Metadata fields table
+        # Scripts table
         self.scripts_table.model().update_checkboxes(current_collection.enabled_scripts)
-        for row in range(self.scripts_table.model().rowCount()):
-            self.scripts_table.itemDelegateForColumn(ScriptsTableColumn.ENABLED).refresh_editor(self.scripts_table.model().index(row, ScriptsTableColumn.ENABLED))
-
-        self.scripts_table.resizeColumnToContents(0)
 
         # file tags
         #self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
@@ -521,35 +513,40 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_sync_stack()
 
     def add_script(self):
-        self.scripts_table.model().beginInsertRows(QModelIndex(), self.scripts_table.model().rowCount(),
-                                                  self.scripts_table.model().rowCount())
-        self.scripts_table.model().scripts.append(MetadataSuggestionsScript(''))
+        selection = self.scripts_table.selectedIndexes()
+        if len(selection) == 0:
+            return
 
-        self.scripts_table.openPersistentEditor(
-            self.scripts_table.model().index(self.scripts_table.model().rowCount() - 1, ScriptsTableColumn.ENABLED))
-        self.scripts_table.model().endInsertRows()
+        new_index = self.scripts_table.model().add_script(selection[0])
 
-        new_index = self.scripts_table.model().index(self.scripts_table.model().rowCount() - 1,
-                                                     ScriptsTableColumn.NAME)
-        self.scripts_table.selectRow(new_index.row())
+        self.scripts_table.selectionModel().select(new_index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
         self.scripts_table.edit(new_index)
 
     def remove_script(self):
-        index = self.scripts_table.currentIndex().row()
-        if index == -1:
+        selection = self.scripts_table.selectedIndexes()
+        if len(selection) == 0:
             return
-        self.scripts_table.model().beginRemoveRows(QModelIndex(), index, index)
-        self.scripts_table.model().scripts.pop(index)
-        self.scripts_table.model().endRemoveRows()
+
+        self.scripts_table.model().remove_script(selection[0])
 
     def save_script(self, selection: QItemSelection | None = None):
         if selection is None:
             index = self.scripts_table.selectedIndexes()
             if len(index) == 0:
                 return
-            script = self.scripts_table.model().scripts[index[0].row()]
+
+            item = self.scripts_table.model().itemFromIndex(index[0])
+            if not isinstance(item, ScriptItem):
+                return
         else:
-            script = self.scripts_table.model().scripts[selection.indexes()[0].row()]
+            item = self.scripts_table.model().itemFromIndex(selection.indexes()[0])
+            if not isinstance(item, ScriptItem):
+                return
+
+        script = item.script
+
+        script.name = item.text()
+        script.script = self.script_editor.toPlainText()
 
         if isinstance(script, MetadataSuggestionsScript):
             script.field_name = self.field_name_entry.text()
@@ -559,7 +556,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             script.default_remove_brackets = self.remove_brackets_checkbox.isChecked()
             script.local_field = self.local_field_checkbox.isChecked()
             script.overwrite_metadata_table = self.overwrite_metadata_checkbox.isChecked()
-        script.script = self.script_editor.toPlainText()
+
 
     def script_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if not deselected.isEmpty():
@@ -567,7 +564,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if selected.isEmpty():
             return
-        script: Script = self.scripts_table.model().scripts[selected.indexes()[0].row()]
+
+        item = self.scripts_table.model().itemFromIndex(selected.indexes()[0])
+        if not isinstance(item, ScriptItem):
+            return
+
+        script: Script = item.script
 
         if isinstance(script, MetadataSuggestionsScript):
             self.script_type_settings_stack.setCurrentIndex(0)

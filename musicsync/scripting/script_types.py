@@ -9,20 +9,42 @@ from musicsync.xml_object import XmlObject
 from musicsync.utils import GuiStrEnum
 
 
+class ScriptType(GuiStrEnum):
+    DOWNLOAD = auto(), 'Download script', ''
+    METADATA_SUGGESTIONS = auto(), 'Metadata suggestions', ''
+
+    @property
+    def cls(self):
+        if self == ScriptType.METADATA_SUGGESTIONS:
+            return MetadataSuggestionsScript
+        elif self == ScriptType.DOWNLOAD:
+            return DownloadScript
+
+        return None
+
+
+
 @dataclass
 class Script(XmlObject):
     name: str
     script: str = ''
 
     enabled: bool = field(default=False, compare=False, repr=False)
-    script_type: ClassVar[str] = 'Script'
+    script_type: ClassVar[ScriptType] = None
 
     @staticmethod
     def from_xml(el: Element) -> 'XmlObject':
         script = '\n'.join(' ' * int(c.attrib.get('indent', 0)) + (c.text or '') for c in el)
+        cls = None
         if el.tag == 'MetadataSuggestionsScript':
-            return MetadataSuggestionsScript(**(el.attrib | {'script': script}))
-        raise AttributeError('Unknown Script type')
+            cls = MetadataSuggestionsScript
+        elif el.tag == 'DownloadScript':
+            cls = DownloadScript
+
+        if cls is None:
+            raise AttributeError('Unknown Script type')
+
+        return cls(**(el.attrib | {'script': script}))
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
@@ -54,7 +76,7 @@ class MetadataSuggestionsScript(Script):
     local_field: bool = False
     overwrite_metadata_table: bool = False
 
-    script_type: ClassVar[str] = 'Metadata suggestions'
+    script_type: ClassVar[ScriptType] = ScriptType.METADATA_SUGGESTIONS
 
     def __post_init__(self):
         if isinstance(self.timed_data, str):
@@ -82,9 +104,23 @@ class MetadataSuggestionsScript(Script):
 class DownloadScriptWhen(GuiStrEnum):
     PRE_PROCESS = auto(), 'Pre-process', 'After yt-dlp extracted the info dict, before the video passes the download filter (i.e. this script will be executed for Tracks with action "Download" or "Redownload metadata").'
     AFTER_FILTER = auto(), 'After filter', 'After the Track passes yt-dlp\'s filter. This script will only be executed for Tracks with action "Download" that weren\'t filtered by a "Pre-process" script.'
-    #VIDEO = auto(),
+    VIDEO = auto(), 'Video', ''
+    BEFORE_DL = auto(), 'Before download', ''
+    POST_PROCESS = auto(), 'Post-process', ''
+    AFTER_MOVE = auto(), 'After move', ''
+    AFTER_VIDEO = auto(), 'After video', ''
+    PLAYLIST = auto(), 'Playlist', ''
 
 
 @dataclass
 class DownloadScript(Script):
-    script_type: ClassVar[str] = 'Download'
+    when: DownloadScriptWhen = DownloadScriptWhen.POST_PROCESS
+
+    script_type: ClassVar[ScriptType] = ScriptType.DOWNLOAD
+
+    def __post_init__(self):
+        if isinstance(self.when, str):
+            self.when = DownloadScriptWhen(self.when)
+
+    def update_xml_attrs(self, attrs) -> str:
+        pass
