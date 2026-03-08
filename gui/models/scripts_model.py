@@ -3,7 +3,7 @@ from typing import cast
 from PySide6.QtCore import Qt, QModelIndex
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 
-from musicsync.music_sync_library import Script
+from musicsync.music_sync_library import Script, ScriptReference
 from musicsync.scripting.script_types import ScriptType
 
 
@@ -28,7 +28,7 @@ class ScriptItem(QStandardItem):
 
 
 class ScriptsModel(QStandardItemModel):
-    def __init__(self, scripts: list[Script]=None, window=None):
+    def __init__(self, scripts: set[Script]=None, window=None):
         super(ScriptsModel, self).__init__()
 
         self.window = window
@@ -56,7 +56,6 @@ class ScriptsModel(QStandardItemModel):
 
         base = item.text().strip() or "Script"
         existing = set(i.text().lower() for i in self.items if i is not item)
-        print(existing)
 
         while base.lower() in existing:
             base += '-'
@@ -65,9 +64,18 @@ class ScriptsModel(QStandardItemModel):
         item.setText(base)
         self._guard = False
 
-    def update_checkboxes(self, enabled_scripts: list[str]):
+    def update_table(self, script_references: list[ScriptReference]):
+        enabled = [ref.name for ref in script_references if ref.enabled]
+        priorities = {ref.name: ref.priority for ref in script_references}
+
         for it in self.items:
-            it.setCheckState(Qt.CheckState.Checked if it.script.name in enabled_scripts else Qt.CheckState.Unchecked)
+            it.setCheckState(Qt.CheckState.Checked if it.script.name in enabled else Qt.CheckState.Unchecked)
+
+        for t in self.script_types.values():
+            scripts = [t.takeRow(0)[0] for _ in range(t.rowCount())]
+            scripts.sort(key=lambda i: priorities.get(i.text(), 1_000_000))
+            for script in scripts:
+                t.appendRow(script)
 
     def add_script(self, index: QModelIndex):
         child = self.itemFromIndex(index)
@@ -96,8 +104,8 @@ class ScriptsModel(QStandardItemModel):
         parent.removeRow(item.row())
 
     @property
-    def scripts(self) -> list[Script]:
-        return [it.script for it in self.items]
+    def scripts(self) -> set[Script]:
+        return set(it.script for it in self.items)
 
     @property
     def items(self) -> list[ScriptItem]:

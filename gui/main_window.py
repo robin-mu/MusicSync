@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QHeaderView, )
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection, Script, PathComponent
+    Collection, Script, PathComponent, ScriptReference
 from musicsync.scripting.script_types import MetadataSuggestionsScript
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
@@ -261,7 +261,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.downloaded_combo_box.currentIndex()).action,
         }
 
-        item.scripts = [it.script.name for it in self.scripts_table.model().items if it.checkState() == Qt.CheckState.Checked]
+        item.script_settings = [ScriptReference(it.script.name, it.checkState() == Qt.CheckState.Checked, it.row()) for it in self.scripts_table.model().items]
         # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
         self.save_script()
@@ -463,7 +463,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
 
         # Scripts table
-        self.scripts_table.model().update_checkboxes(current_collection.scripts)
+        self.scripts_table.model().update_table(current_collection.script_settings)
 
         # file tags
         #self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))

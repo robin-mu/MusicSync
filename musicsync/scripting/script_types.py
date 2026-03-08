@@ -23,7 +23,6 @@ class ScriptType(GuiStrEnum):
         return None
 
 
-
 @dataclass
 class Script(XmlObject):
     name: str
@@ -66,6 +65,10 @@ class Script(XmlObject):
     def update_xml_attrs(self, attrs) -> str:
         pass
 
+    def __hash__(self):
+        return hash(self.name)
+
+
 @dataclass
 class MetadataSuggestionsScript(Script):
     field_name: str = ''
@@ -100,6 +103,9 @@ class MetadataSuggestionsScript(Script):
         attrs['local_field'] = str(self.local_field)
         attrs['overwrite_metadata_table'] = str(self.overwrite_metadata_table)
 
+    def __hash__(self):
+        return super().__hash__()
+
 
 class DownloadScriptWhen(GuiStrEnum):
     PRE_PROCESS = auto(), 'Pre-process', 'After yt-dlp extracted the info dict, before the video passes the download filter (i.e. this script will be executed for Tracks with action "Download" or "Redownload metadata").'
@@ -124,3 +130,6 @@ class DownloadScript(Script):
 
     def update_xml_attrs(self, attrs) -> str:
         pass
+
+    def __hash__(self):
+        return super().__hash__()

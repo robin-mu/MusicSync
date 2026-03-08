@@ -11,6 +11,111 @@ from .xml_model import XmlObjectModel, XmlObjectModelItem
 from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Track, Script
 
 
+class LibraryModel(XmlObjectModel):
+    def __init__(self, path: str=None):
+        super(LibraryModel, self).__init__()
+
+        self.path: str = path
+        self.root = self.invisibleRootItem()
+        self.loaded_library_object: MusicSyncLibrary | None = None
+        self.scripts: set['Script'] = set()
+        self.metadata_table: pd.DataFrame = pd.DataFrame()
+
+        if path is not None:
+            # self.loaded_library_object = MusicSyncLibrary.read_pickle(path)
+            self.loaded_library_object = MusicSyncLibrary.read_xml(path)
+            self.scripts = self.loaded_library_object.scripts
+            self.metadata_table = self.loaded_library_object.metadata_table
+
+            for child in self.loaded_library_object.children:
+                if isinstance(child, Folder):
+                    self.root.appendRow(FolderItem.from_xml_object(child))
+                elif isinstance(child, Collection):
+                    self.root.appendRow(CollectionItem.from_xml_object(child))
+
+    @staticmethod
+    def item_from_xml(el: Element) -> XmlObjectModelItem:
+        if el.tag == 'Folder':
+            return FolderItem.from_xml_object(Folder.from_xml(el))
+        elif el.tag == 'Collection':
+            return CollectionItem.from_xml_object(Collection.from_xml(el))
+        elif el.tag == 'CollectionUrl':
+            return CollectionUrlItem.from_xml_object(CollectionUrl.from_xml(el))
+
+        raise ValueError(f'Unknown tag {el.tag}')
+
+    @staticmethod
+    def validate_drop(parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
+        if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
+            return False
+
+        if isinstance(parent_item, CollectionItem) and (isinstance(item, (CollectionItem, FolderItem))):
+            return False
+
+        if isinstance(parent_item, CollectionUrlItem):
+            return False
+
+        return True
+
+    def to_library_object(self) -> MusicSyncLibrary:
+        children = []
+        for i in range(self.root.rowCount()):
+            row = typing.cast(XmlObjectModelItem, self.root.child(i))
+            children.append(row.to_xml_object())
+        return MusicSyncLibrary(scripts=self.scripts,
+                                metadata_table=self.metadata_table,
+                                children=children)
+
+    def to_xml(self, filename: str | None=None):
+        if filename is None:
+            filename = self.path
+
+        if filename.endswith('.pkl'):
+            filename = filename[:-4] + '.xml'
+
+        lib_object = self.to_library_object()
+        self.loaded_library_object = lib_object
+        lib_object.write_xml(filename)
+
+    def to_pickle(self, filename: str | None=None):
+        if filename is None:
+            filename = self.path
+        lib_object = self.to_library_object()
+        self.loaded_library_object = lib_object
+        lib_object.write_pickle(filename)
+
+    def has_changed(self):
+        if self.root.rowCount() == 0:
+            return False
+
+        if self.loaded_library_object is None:
+            return True
+
+        return self.to_library_object() != self.loaded_library_object
+
+    @staticmethod
+    def add_folder(parent: FolderItem):
+        new_folder = FolderItem()
+        parent.appendRow(new_folder)
+        return new_folder
+
+    @staticmethod
+    def add_collection(parent: FolderItem):
+        new_collection = CollectionItem()
+        parent.appendRow(new_collection)
+        return new_collection
+
+    @staticmethod
+    def add_url(parent: CollectionItem, url: str='', name: str= '', tracks: dict[str, Track] | None=None):
+        if tracks is None:
+            tracks = {}
+
+        new_url = CollectionUrlItem(url=url, name=name, tracks=tracks,
+                                    concat=parent.in_auto_concat(url), resolved=False)
+        parent.appendRow(new_url)
+        return new_url
+
+
 class FolderItem(XmlObjectModelItem):
     def __init__(self, **kwargs):
         super().__init__()
@@ -54,7 +159,7 @@ class CollectionItem(XmlObjectModelItem):
         self.sync_delete_files = kwargs.get('sync_delete_files', False)
         self.exclude_after_download = kwargs.get('exclude_after_download', False)
         self.sync_actions = kwargs.get('sync_actions', Collection.DEFAULT_SYNC_ACTIONS.copy())
-        self.scripts = kwargs.get('scripts', [])
+        self.script_settings = kwargs.get('script_settings', [])
         self.url_name_format = kwargs.get('url_name_format', '')
         self.auto_concat_urls = kwargs.get('auto_concat_urls', False)
         self.excluded_yt_dlp_fields = kwargs.get('excluded_yt_dlp_fields', Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS)
@@ -152,107 +257,3 @@ class CollectionUrlItem(XmlObjectModelItem):
             self.setText(self.url)
 
         self.setFont(f)
-
-class LibraryModel(XmlObjectModel):
-    @staticmethod
-    def item_from_xml(el: Element) -> XmlObjectModelItem:
-        if el.tag == 'Folder':
-            return FolderItem.from_xml_object(Folder.from_xml(el))
-        elif el.tag == 'Collection':
-            return CollectionItem.from_xml_object(Collection.from_xml(el))
-        elif el.tag == 'CollectionUrl':
-            return CollectionUrlItem.from_xml_object(CollectionUrl.from_xml(el))
-
-        raise ValueError(f'Unknown tag {el.tag}')
-
-    @staticmethod
-    def validate_drop(parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
-        if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
-            return False
-
-        if isinstance(parent_item, CollectionItem) and (isinstance(item, (CollectionItem, FolderItem))):
-            return False
-
-        if isinstance(parent_item, CollectionUrlItem):
-            return False
-
-        return True
-
-    def __init__(self, path: str=None):
-        super(LibraryModel, self).__init__()
-
-        self.path: str = path
-        self.root = self.invisibleRootItem()
-        self.loaded_library_object: MusicSyncLibrary | None = None
-        self.scripts: list['Script'] = []
-        self.metadata_table: pd.DataFrame = pd.DataFrame()
-
-        if path is not None:
-            # self.loaded_library_object = MusicSyncLibrary.read_pickle(path)
-            self.loaded_library_object = MusicSyncLibrary.read_xml(path)
-            self.scripts = self.loaded_library_object.scripts
-            self.metadata_table = self.loaded_library_object.metadata_table
-
-            for child in self.loaded_library_object.children:
-                if isinstance(child, Folder):
-                    self.root.appendRow(FolderItem.from_xml_object(child))
-                elif isinstance(child, Collection):
-                    self.root.appendRow(CollectionItem.from_xml_object(child))
-
-    def to_library_object(self) -> MusicSyncLibrary:
-        children = []
-        for i in range(self.root.rowCount()):
-            row = typing.cast(XmlObjectModelItem, self.root.child(i))
-            children.append(row.to_xml_object())
-        return MusicSyncLibrary(scripts=self.scripts,
-                                metadata_table=self.metadata_table,
-                                children=children)
-
-    def to_xml(self, filename: str | None=None):
-        if filename is None:
-            filename = self.path
-
-        if filename.endswith('.pkl'):
-            filename = filename[:-4] + '.xml'
-
-        lib_object = self.to_library_object()
-        self.loaded_library_object = lib_object
-        lib_object.write_xml(filename)
-
-    def to_pickle(self, filename: str | None=None):
-        if filename is None:
-            filename = self.path
-        lib_object = self.to_library_object()
-        self.loaded_library_object = lib_object
-        lib_object.write_pickle(filename)
-
-    def has_changed(self):
-        if self.root.rowCount() == 0:
-            return False
-
-        if self.loaded_library_object is None:
-            return True
-
-        return self.to_library_object() != self.loaded_library_object
-
-    @staticmethod
-    def add_folder(parent: FolderItem):
-        new_folder = FolderItem()
-        parent.appendRow(new_folder)
-        return new_folder
-
-    @staticmethod
-    def add_collection(parent: FolderItem):
-        new_collection = CollectionItem()
-        parent.appendRow(new_collection)
-        return new_collection
-
-    @staticmethod
-    def add_url(parent: CollectionItem, url: str='', name: str= '', tracks: dict[str, Track] | None=None):
-        if tracks is None:
-            tracks = {}
-
-        new_url = CollectionUrlItem(url=url, name=name, tracks=tracks,
-                                    concat=parent.in_auto_concat(url), resolved=False)
-        parent.appendRow(new_url)
-        return new_url

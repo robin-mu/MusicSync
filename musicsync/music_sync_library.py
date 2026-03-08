@@ -3,7 +3,7 @@ import pickle
 import xml.etree.ElementTree as et
 from collections import namedtuple
 from dataclasses import dataclass, field
-from enum import StrEnum, auto
+from enum import auto
 from pprint import pprint
 from typing import Any, ClassVar, Union, Callable
 from xml.etree.ElementTree import Element
@@ -104,7 +104,7 @@ class MetadataStatus(GuiStrEnum):
 
 @dataclass
 class MusicSyncLibrary:
-    scripts: list['Script'] = field(default_factory=list)
+    scripts: set['Script'] = field(default_factory=set)
     metadata_table: DataFrame = field(default_factory=pd.DataFrame)
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
 
@@ -125,7 +125,7 @@ class MusicSyncLibrary:
         tree = et.parse(xml_path)
         root = tree.getroot()
         children = []
-        scripts = []
+        scripts = set()
         for child in root:
             if child.tag == 'Folder':
                 children.append(Folder.from_xml(child))
@@ -133,7 +133,7 @@ class MusicSyncLibrary:
                 children.append(Collection.from_xml(child))
             elif child.tag == 'Scripts':
                 for script in child:
-                    scripts.append(Script.from_xml(script))
+                    scripts.add(Script.from_xml(script))
 
         csv_path = xml_path[:-4] + '.csv'
         metadata_table = pd.read_csv(csv_path) if os.path.isfile(csv_path) else pd.DataFrame()
@@ -294,7 +294,7 @@ class Collection(XmlObject):
 
     sync_actions: dict[TrackSyncStatus, TrackSyncAction] = field(default_factory=lambda: Collection.DEFAULT_SYNC_ACTIONS)
 
-    scripts: list[str] = field(default_factory=list)
+    script_settings: list[ScriptReference] = field(default_factory=list)
 
     _urls: list['CollectionUrl'] = field(default_factory=list)
 
@@ -328,10 +328,10 @@ class Collection(XmlObject):
             elif child.tag == 'CollectionUrl':
                 kwargs['_urls'].append(CollectionUrl.from_xml(child))
             elif child.tag == 'ScriptSettings':
-                kwargs['scripts'] = []
+                kwargs['script_settings'] = []
                 for ref in child:
-                    if ref.tag == 'ScriptRef':
-                        kwargs['scripts'].append(ref.attrib['name'])
+                    if ref.tag == 'ScriptReference':
+                        kwargs['script_settings'].append(ScriptReference(ref.attrib['name'], ref.attrib['enabled'] == 'True', int(ref.attrib['priority'])))
 
         return Collection(**(kwargs | el.attrib))
 
@@ -343,7 +343,7 @@ class Collection(XmlObject):
         attrs.pop('sync_bookmark_title_as_url_name')
         attrs.pop('sync_delete_files')
         attrs.pop('sync_actions')
-        attrs.pop('scripts')
+        attrs.pop('script_settings')
         attrs.pop('downloader')
         attrs.pop('excluded_yt_dlp_fields')
         attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
@@ -365,11 +365,16 @@ class Collection(XmlObject):
         if self.sync_actions != Collection.DEFAULT_SYNC_ACTIONS:
             el.append(et.Element('SyncActions', **self.sync_actions))
 
-        if self.scripts:
-            scripts = et.Element('ScriptSettings')
-            for ref in self.scripts:
-                scripts.append(et.Element('ScriptRef', attrib={'name': ref}))
-            el.append(scripts)
+        if self.script_settings:
+            script_settings = et.Element('ScriptSettings')
+            for ref in self.script_settings:
+                attrib = {
+                    'name': ref.name,
+                    'enabled': str(ref.enabled),
+                    'priority': str(ref.priority),
+                }
+                script_settings.append(et.Element('ScriptReference', attrib=attrib))
+            el.append(script_settings)
 
         for url in self._urls:
             el.append(url.to_xml())
