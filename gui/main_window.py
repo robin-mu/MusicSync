@@ -80,6 +80,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.scripts_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.scripts_table.expandAll()
         self.scripts_table.selectionModel().selectionChanged.connect(self.script_selection_changed)
+        self.scripts_table.itemDelegate().closeEditor.connect(self.check_script_name)
 
         self.script_add_button.pressed.connect(self.add_script)
         self.script_remove_button.pressed.connect(self.remove_script)
@@ -522,6 +523,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         new_index = self.scripts_table.model().add_script(selection[0])
 
         self.scripts_table.selectionModel().select(new_index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
+        self.scripts_table.selectionModel().setCurrentIndex(new_index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
         self.scripts_table.edit(new_index)
 
     def remove_script(self):
@@ -609,6 +611,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.overwrite_metadata_checkbox.setChecked(script.overwrite_metadata_table)
 
         self.script_editor.setPlainText(script.script)
+
+    def check_script_name(self, *_):
+        idx = self.scripts_table.currentIndex()
+        if not idx.isValid():
+            return
+
+        if not idx.parent().isValid():
+            return
+
+        item = self.scripts_table.model().itemFromIndex(idx)
+        if not item.text().strip():
+            item.setText("Script")
+
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()

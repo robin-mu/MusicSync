@@ -43,6 +43,28 @@ class ScriptsModel(QStandardItemModel):
         for script in scripts:
             self.script_types[script.script_type].appendRow(ScriptItem(script))
 
+        self.itemChanged.connect(self._check_duplicates)
+        self._guard = False
+
+    def _check_duplicates(self, item) -> None:
+        if self._guard:
+            return
+
+        parent = item.parent()
+        if parent is None:
+            return
+
+        base = item.text().strip() or "Script"
+        existing = set(i.text().lower() for i in self.items if i is not item)
+        print(existing)
+
+        while base.lower() in existing:
+            base += '-'
+
+        self._guard = True
+        item.setText(base)
+        self._guard = False
+
     def update_checkboxes(self, enabled_scripts: list[str]):
         for it in self.items:
             it.setCheckState(Qt.CheckState.Checked if it.script.name in enabled_scripts else Qt.CheckState.Unchecked)
