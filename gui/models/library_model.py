@@ -1,14 +1,13 @@
 import os
-import re
-import typing
 from copy import deepcopy
+from typing import cast
 from xml.etree.ElementTree import Element
 
 import pandas as pd
 from PySide6.QtGui import QIcon
 
-from .xml_model import XmlObjectModel, XmlObjectModelItem
 from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Track, Script
+from .xml_model import XmlObjectModel, XmlObjectModelItem
 
 
 class LibraryModel(XmlObjectModel):
@@ -60,7 +59,7 @@ class LibraryModel(XmlObjectModel):
     def to_library_object(self) -> MusicSyncLibrary:
         children = []
         for i in range(self.root.rowCount()):
-            row = typing.cast(XmlObjectModelItem, self.root.child(i))
+            row = cast(XmlObjectModelItem, self.root.child(i))
             children.append(row.to_xml_object())
         return MusicSyncLibrary(scripts=self.scripts,
                                 metadata_table=self.metadata_table,
@@ -111,7 +110,7 @@ class LibraryModel(XmlObjectModel):
             tracks = {}
 
         new_url = CollectionUrlItem(url=url, name=name, tracks=tracks,
-                                    concat=parent.in_auto_concat(url), resolved=False)
+                                    concat=parent.auto_concat_urls, resolved=False)
         parent.appendRow(new_url)
         return new_url
 
@@ -173,7 +172,7 @@ class CollectionItem(XmlObjectModelItem):
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':
         collection_item = CollectionItem(**vars(collection))
-        for url in collection._urls:
+        for url in collection.urls:
             collection_item.appendRow(CollectionUrlItem.from_xml_object(url))
 
         return collection_item
@@ -200,6 +199,9 @@ class CollectionItem(XmlObjectModelItem):
         if track is None:
             return folder
         return os.path.join(folder, track.filename)
+
+    def child(self, row, *args) -> 'CollectionUrlItem':
+        return cast(CollectionUrlItem, super().child(row, *args))
 
 
 class CollectionUrlItem(XmlObjectModelItem):
@@ -257,3 +259,7 @@ class CollectionUrlItem(XmlObjectModelItem):
             self.setText(self.url)
 
         self.setFont(f)
+
+    # for correct types
+    def parent(self, /) -> 'CollectionItem':
+        return cast(CollectionItem, super().parent())

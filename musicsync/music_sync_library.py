@@ -4,14 +4,12 @@ import xml.etree.ElementTree as et
 from collections import namedtuple
 from dataclasses import dataclass, field
 from enum import auto
-from pprint import pprint
 from typing import Any, ClassVar, Union, Callable
 from xml.etree.ElementTree import Element
 
 import pandas as pd
-import yt_dlp
 from pandas import DataFrame
-from yt_dlp import MetadataParserPP, YoutubeDL
+from yt_dlp.postprocessor.common import PostProcessor
 
 import musicsync.downloader as dl
 from musicsync.scripting.script_types import Script
@@ -298,7 +296,7 @@ class Collection(XmlObject):
 
     _urls: list['CollectionUrl'] = field(default_factory=list)
 
-    downloader: 'MusicSyncDownloader | None' = None
+    downloader: 'dl.MusicSyncDownloader | None' = None
 
     def __post_init__(self):
         if isinstance(self.save_playlists_to_subfolders, str):
@@ -413,7 +411,7 @@ class Collection(XmlObject):
         return os.path.join(folder, track.filename)
 
 
-class YTMusicAlbumCover(yt_dlp.postprocessor.PostProcessor):
+class YTMusicAlbumCover(PostProcessor):
     # set 1:1 album cover to be embedded (only for yt-music)
     def run(self, info):
         for t in info['thumbnails']:
@@ -483,65 +481,64 @@ class Track(XmlObject):
     permanently_downloaded: bool = False
     metadata_status: MetadataStatus = MetadataStatus.NEW
 
-    def __post_init__(self):
-        if isinstance(self.permanently_downloaded, str):
-            self.permanently_downloaded = self.permanently_downloaded == 'True'
-
     @staticmethod
     def from_xml(el: Element) -> 'Track':
-        return Track(url=el.attrib['url'], status=TrackSyncStatus(el.attrib['status']),
-                     filename=el.attrib['path'], title=el.attrib['title'], playlist_index=el.attrib['playlist_index'],
-                     permanently_downloaded=el.attrib['permanently_downloaded'],
-                     metadata_status=MetadataStatus(el.attrib['metadata_status']))
+        attrib: dict[str, Any] = el.attrib.copy()
+        attrib['status'] = TrackSyncStatus(attrib['status'])
+        attrib['metadata_status'] = MetadataStatus(attrib['metadata_status'])
+        attrib['permanently_downloaded'] = attrib['permanently_downloaded'] == 'True'
+
+        return Track(**el.attrib)
 
     def to_xml(self) -> Element:
-        return et.Element('Track', url=self.url, status=self.status, path=self.filename,
+        return et.Element('Track', url=self.url, status=self.status, filename=self.filename,
                           permanently_downloaded=str(self.permanently_downloaded),
                           title=self.title, playlist_index=self.playlist_index,
                           metadata_status=self.metadata_status)
 
 
 if __name__ == '__main__':
+    pass
     # print(MusicSyncLibrary().read_xml('../library.xml').children[0].children[0].update_sync_status())
 
-    info = {
-        'ext': 'mp3',
-        'filepath': 'Mili - TIAN TIAN [Limbus Company] [szyPY8nbBF4].mp3',
-        'track': 'Test',
-        'title': 'Mili - TIAN TIAN',
-        'test': 1.2345
-    }
-    # FFmpegMetadataPP(None).run(info)
-
-    info = MetadataParserPP(YoutubeDL(), [(MetadataParserPP.Actions.INTERPRET, '%(title.::-1)s (%(test).2f)',
-                                           '%(artist)s - %(title)s'),
-                                          (MetadataParserPP.Actions.REPLACE, 'title', r'\((.+)\)', r'-\1-')]).run(info)
-
-    ydl_opts = {'final_ext': 'mp3',
-                'format': 'ba[acodec^=mp3]/ba/b',
-                'outtmpl': {'pl_thumbnail': ''},
-                'writethumbnail': True,
-                'postprocessors': [{'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
-                                                 '%(playlist_index)s',
-                                                 '%(meta_track)s'),
-                                                (yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
-                                                 '%(thumbnails.2.url)s',
-                                                 '%(thumbnail_test)s')
-                                                ],
-                                    'key': 'MetadataParser',
-                                    'when': 'pre_process'},
-                                   {'key': 'FFmpegExtractAudio',
-                                    'nopostoverwrites': False,
-                                    'preferredcodec': 'mp3',
-                                    'preferredquality': '5'},
-                                   {'add_chapters': True,
-                                    'add_infojson': 'if_exists',
-                                    'add_metadata': True,
-                                    'key': 'FFmpegMetadata'},
-                                   {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
-                'compat_opts': ['no-youtube-unavailable-videos']
-                }
-
-    ydl = YoutubeDL(ydl_opts)
-    info = ydl.extract_info('https://www.youtube.com/watch?v=53bZSTSLUqI', download=False)
-    pprint(info)
+    # info = {
+    #     'ext': 'mp3',
+    #     'filepath': 'Mili - TIAN TIAN [Limbus Company] [szyPY8nbBF4].mp3',
+    #     'track': 'Test',
+    #     'title': 'Mili - TIAN TIAN',
+    #     'test': 1.2345
+    # }
+    # # FFmpegMetadataPP(None).run(info)
+    # 
+    # info = MetadataParserPP(YoutubeDL(), [(MetadataParserPP.Actions.INTERPRET, '%(title.::-1)s (%(test).2f)',
+    #                                        '%(artist)s - %(title)s'),
+    #                                       (MetadataParserPP.Actions.REPLACE, 'title', r'\((.+)\)', r'-\1-')]).run(info)
+    # 
+    # ydl_opts = {'final_ext': 'mp3',
+    #             'format': 'ba[acodec^=mp3]/ba/b',
+    #             'outtmpl': {'pl_thumbnail': ''},
+    #             'writethumbnail': True,
+    #             'postprocessors': [{'actions': [(yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
+    #                                              '%(playlist_index)s',
+    #                                              '%(meta_track)s'),
+    #                                             (yt_dlp.postprocessor.metadataparser.MetadataParserPP.interpretter,
+    #                                              '%(thumbnails.2.url)s',
+    #                                              '%(thumbnail_test)s')
+    #                                             ],
+    #                                 'key': 'MetadataParser',
+    #                                 'when': 'pre_process'},
+    #                                {'key': 'FFmpegExtractAudio',
+    #                                 'nopostoverwrites': False,
+    #                                 'preferredcodec': 'mp3',
+    #                                 'preferredquality': '5'},
+    #                                {'add_chapters': True,
+    #                                 'add_infojson': 'if_exists',
+    #                                 'add_metadata': True,
+    #                                 'key': 'FFmpegMetadata'},
+    #                                {'already_have_thumbnail': False, 'key': 'EmbedThumbnail'}],
+    #             'compat_opts': ['no-youtube-unavailable-videos']
+    #             }
+    # 
+    # ydl = YoutubeDL(ydl_opts)
+    # info = ydl.extract_info('https://www.youtube.com/watch?v=53bZSTSLUqI', download=False)
+    # pprint(info)
