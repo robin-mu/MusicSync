@@ -16,6 +16,9 @@ class ScriptTypeItem(QStandardItem):
 
         self.cls = script_type.cls
 
+    def child(self, row, *args) -> ScriptItem:
+        return cast(ScriptItem, super().child(row, *args))
+
 class ScriptItem(QStandardItem):
     def __init__(self, script: Script):
         super().__init__(script.name)
@@ -25,6 +28,9 @@ class ScriptItem(QStandardItem):
         self.setCheckState(Qt.CheckState.Checked if script.enabled else Qt.CheckState.Unchecked)
 
         self.script = script
+
+    def parent(self, /) -> ScriptTypeItem:
+        return cast(ScriptTypeItem, super().parent())
 
 
 class ScriptsModel(QStandardItemModel):
@@ -80,14 +86,13 @@ class ScriptsModel(QStandardItemModel):
     def add_script(self, index: QModelIndex):
         child = self.itemFromIndex(index)
         if isinstance(child, ScriptItem):
-            parent = child.parent()
+            parent: ScriptTypeItem = child.parent()
             new_row = child.row() + 1
         else:
-            parent = child
+            parent: ScriptTypeItem = cast(ScriptTypeItem, child)
             new_row = parent.rowCount()
-        parent = cast(ScriptTypeItem, parent)
 
-        script = parent.cls('')
+        script = parent.cls(name='')
         item = ScriptItem(script)
 
         parent.insertRow(new_row, [item])
@@ -112,6 +117,6 @@ class ScriptsModel(QStandardItemModel):
         items: list[ScriptItem] = []
         for script_type_item in self.script_types.values():
             for i in range(script_type_item.rowCount()):
-                items.append(cast(ScriptItem, script_type_item.child(i)))
+                items.append(script_type_item.child(i))
 
         return items

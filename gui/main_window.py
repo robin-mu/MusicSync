@@ -1,12 +1,12 @@
 import functools
 from copy import deepcopy
+from typing import cast
 
 import pandas as pd
-from PySide6 import QtCore, QtWidgets
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QUrl, QModelIndex, QThread, QItemSelectionModel
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
+from PySide6 import QtWidgets
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QThread, QItemSelectionModel
+from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
-    QApplication,
     QDialogButtonBox,
     QFileDialog,
     QMainWindow,
@@ -18,11 +18,11 @@ from PySide6.QtWidgets import (
 
 from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
     Collection, Script, PathComponent, ScriptReference
-from musicsync.scripting.script_types import MetadataSuggestionsScript
+from musicsync.scripting.script_types import MetadataSuggestionsScript, DownloadScript
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
 from .models.file_sync_model import ActionComboboxDelegate, FileSyncModel, FileSyncModelColumn
-from .models.gui_combobox_model import ActionComboboxItemModel
+from .models.gui_combobox_model import ActionComboboxItemModel, DownloadScriptComboboxItemModel
 from .models.library_model import CollectionItem, CollectionUrlItem, FolderItem, LibraryModel
 from .models.scripts_model import ScriptsModel, ScriptItem
 from .threads import ThreadingWorker
@@ -49,6 +49,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.tabWidget.currentChanged.connect(self.tab_changed)
 
+        # File sync tab
         self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(
             update_callback=self.update_sync_buttons, window=self, view=self.sync_status_table))
 
@@ -73,9 +74,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
             box.view().viewport().installEventFilter(self)
 
-        self.settings_filename_format_label.mousePressEvent = self.open_doc_url
-
-        # Metadata suggestions tab
+        # Scripting tab
         self.scripts_table.setModel(ScriptsModel(deepcopy(self.treeView.model().scripts), window=self))
         self.scripts_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.scripts_table.expandAll()
@@ -87,27 +86,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.script_up_button.pressed.connect(functools.partial(self.move_script, direction=-1))
         self.script_down_button.pressed.connect(functools.partial(self.move_script, direction=1))
 
+        self.when_combo_box.setModel(DownloadScriptComboboxItemModel())
+        self.when_combo_box.highlighted[int].connect(lambda index: self.statusbar.showMessage(
+                self.when_combo_box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
+        self.when_combo_box.view().viewport().installEventFilter(self)
+
         self.threads: list[QThread] = []
         self.workers: list[ThreadingWorker] = []
 
         self.showMaximized()
 
-    @staticmethod
-    def open_doc_url(*_):
-        if QApplication.keyboardModifiers() == QtCore.Qt.KeyboardModifier.ControlModifier:
-            QDesktopServices.openUrl(
-                QUrl('https://github.com/robin-mu/MusicSync?tab=readme-ov-file#formatting'))
-
-    def eventFilter(self, obj, event):
-        et = event.type()
-
-        # Sync action combo boxes
-        for box in self.action_combo_boxes.keys():
-            if obj is box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
-                self.statusbar.clearMessage()
-
-        return super(MainWindow, self).eventFilter(obj, event)
-
+    # --------
+    # Menu bar
+    # --------
     def new_library(self):
         if self.treeView.model().has_changed():
             answer = QMessageBox.question(self, 'Save File',
@@ -169,6 +160,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def tab_changed(self, *_):
         self.save_settings(self.get_selected_collection())
 
+    def get_selected_collection(self) -> CollectionItem | None:
+        selected_indexes = self.treeView.selectedIndexes()
+        if not selected_indexes:
+            return None
+
+        current_collection = self.treeView.model().itemFromIndex(selected_indexes[0])
+        if isinstance(current_collection, FolderItem):
+            return None
+
+        if isinstance(current_collection, CollectionUrlItem):
+            current_collection = current_collection.parent()
+        return current_collection
+
+    # -----------------
+    # Library tree view
+    # -----------------
     def tree_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
         if not selected.indexes():
             return
@@ -248,17 +255,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         item.sync_actions = {
             TrackSyncStatus.ADDED_TO_SOURCE: self.added_combo_box.model().invisibleRootItem().child(
-                self.added_combo_box.currentIndex()).action,
+                self.added_combo_box.currentIndex()).member,
             TrackSyncStatus.NOT_DOWNLOADED: self.not_downloaded_combo_box.model().invisibleRootItem().child(
-                self.not_downloaded_combo_box.currentIndex()).action,
+                self.not_downloaded_combo_box.currentIndex()).member,
             TrackSyncStatus.REMOVED_FROM_SOURCE: self.removed_combo_box.model().invisibleRootItem().child(
-                self.removed_combo_box.currentIndex()).action,
+                self.removed_combo_box.currentIndex()).member,
             TrackSyncStatus.LOCAL_FILE: self.local_combo_box.model().invisibleRootItem().child(
-                self.local_combo_box.currentIndex()).action,
+                self.local_combo_box.currentIndex()).member,
             TrackSyncStatus.PERMANENTLY_DOWNLOADED: self.permanent_combo_box.model().invisibleRootItem().child(
-                self.permanent_combo_box.currentIndex()).action,
+                self.permanent_combo_box.currentIndex()).member,
             TrackSyncStatus.DOWNLOADED: self.downloaded_combo_box.model().invisibleRootItem().child(
-                self.downloaded_combo_box.currentIndex()).action,
+                self.downloaded_combo_box.currentIndex()).member,
         }
 
         item.script_settings = [ScriptReference(it.script.name, it.checkState() == Qt.CheckState.Checked, it.row()) for it in self.scripts_table.model().items]
@@ -267,75 +274,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.save_script()
         self.treeView.model().scripts = deepcopy(self.scripts_table.model().scripts)
 
-    def browse_folder_path(self):
-        folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
-        if folder:
-            self.settings_folder_path.setText(folder)
+    def update_tables(self):
+        self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
 
-    def get_selected_collection(self) -> CollectionItem | None:
-        selected_indexes = self.treeView.selectedIndexes()
-        if not selected_indexes:
-            return None
-
-        current_collection = self.treeView.model().itemFromIndex(selected_indexes[0])
-        if isinstance(current_collection, FolderItem):
-            return None
-
-        if isinstance(current_collection, CollectionUrlItem):
-            current_collection = current_collection.parent()
-        return current_collection
-
-    def update_current_sync_folder(self, file: str, path: list[Collection.PathComponent] | None = None,
-                                   set_url_name=False, delete=False):
-        if path is None:
-            path = []
+        self.sync_status_table.horizontalHeader().setSectionResizeMode(FileSyncModelColumn.ACTION, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        for col in FileSyncModelColumn.__members__.values():
+            if col != FileSyncModelColumn.ACTION:
+                self.sync_status_table.horizontalHeader().setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.update_sync_buttons()
 
         current_collection = self.get_selected_collection()
-        current_collection.sync_bookmark_file = file
-        current_collection.sync_bookmark_path = path or []
-        current_collection.sync_bookmark_title_as_url_name = set_url_name
-        current_collection.sync_delete_files = delete
 
-        self.settings_bookmark_title_as_url_name_checkbox.setChecked(set_url_name)
-        self.settings_bookmark_delete_files_checkbox.setChecked(delete)
+        # Scripts table
+        self.scripts_table.model().update_table(current_collection.script_settings)
 
-        if file:
-            font = self.settings_bookmark_label.font()
-            font.setItalic(False)
-            self.settings_bookmark_label.setFont(font)
-
-            text = f'File: {file}\nFolder: {"/".join([e[1] for e in path])}'
-            self.settings_bookmark_label.setText(text)
-
-            self.settings_bookmark_title_as_url_name_checkbox.setEnabled(True)
-            self.settings_bookmark_delete_files_checkbox.setEnabled(True)
-        else:
-            self.settings_bookmark_label.setText('<html><head/><body><p><span style="font-style:normal">File: </span><span style=" font-style:italic;">Not syncing<br/></span><span style="font-style:normal">Folder: </span><span style=" font-style:italic;">Not syncing</span></p></body></html>')
-            self.settings_bookmark_title_as_url_name_checkbox.setEnabled(False)
-            self.settings_bookmark_delete_files_checkbox.setEnabled(False)
-
-    def change_sync_folder(self):
-        def selection_changed(selected: QItemSelection, _: QItemSelection):
-            if bookmark_window.bookmark_tree_widget.itemFromIndex(selected.indexes()[0]).text(2) == '':
-                bookmark_window.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
-            else:
-                bookmark_window.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-
-        bookmark_window = BookmarkDialog()
-        bookmark_window.subfolder_check_box.setEnabled(False)
-        bookmark_window.bookmark_tree_widget.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
-        bookmark_window.bookmark_tree_widget.selectionModel().selectionChanged.connect(selection_changed)
-
-        if bookmark_window.exec() and bookmark_window.bookmark_tree_widget.selectedItems():
-            file = bookmark_window.bookmark_path_entry.text()
-            idx = bookmark_window.bookmark_tree_widget.selectedIndexes()[0]
-            folder = []
-            while (item := bookmark_window.bookmark_tree_widget.itemFromIndex(idx)) is not None:
-                folder.append(PathComponent(id=item.text(3), name=item.text(0)))
-                idx = idx.parent()
-
-            self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
-
+    # -------------
+    # File sync tab
+    # -------------
     def compare_collection(self):
         selected_collection = self.get_selected_collection()
         selected_collection_xml = selected_collection.to_xml_object()
@@ -451,24 +406,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_sync_buttons()
         self.update_sync_stack()
 
-    def update_tables(self):
-        self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
-
-        self.sync_status_table.horizontalHeader().setSectionResizeMode(FileSyncModelColumn.ACTION, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        for col in FileSyncModelColumn.__members__.values():
-            if col != FileSyncModelColumn.ACTION:
-                self.sync_status_table.horizontalHeader().setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.update_sync_buttons()
-
-        current_collection = self.get_selected_collection()
-
-        # Scripts table
-        self.scripts_table.model().update_table(current_collection.script_settings)
-
-        # file tags
-        #self.tag_settings_table.setModel(FileTagsModel(deepcopy(current_collection.file_tags), parent=self))
-        #self.tag_settings_table.resizeColumnsToContents()
-
     def update_sync_buttons(self, last_selected_action: str = None):
         current_collection = self.get_selected_collection()
         if current_collection is None:
@@ -515,6 +452,68 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         collection.sync_text = text
         self.update_sync_stack()
 
+    # -----------------------
+    # Collection settings tab
+    # -----------------------
+    def browse_folder_path(self):
+        folder = QFileDialog.getExistingDirectory(self, 'Select a directory')
+        if folder:
+            self.settings_folder_path.setText(folder)
+
+    def update_current_sync_folder(self, file: str, path: list[PathComponent] | None = None,
+                                   set_url_name=False, delete=False):
+        if path is None:
+            path = []
+
+        current_collection = self.get_selected_collection()
+        current_collection.sync_bookmark_file = file
+        current_collection.sync_bookmark_path = path or []
+        current_collection.sync_bookmark_title_as_url_name = set_url_name
+        current_collection.sync_delete_files = delete
+
+        self.settings_bookmark_title_as_url_name_checkbox.setChecked(set_url_name)
+        self.settings_bookmark_delete_files_checkbox.setChecked(delete)
+
+        if file:
+            font = self.settings_bookmark_label.font()
+            font.setItalic(False)
+            self.settings_bookmark_label.setFont(font)
+
+            text = f'File: {file}\nFolder: {"/".join([e[1] for e in path])}'
+            self.settings_bookmark_label.setText(text)
+
+            self.settings_bookmark_title_as_url_name_checkbox.setEnabled(True)
+            self.settings_bookmark_delete_files_checkbox.setEnabled(True)
+        else:
+            self.settings_bookmark_label.setText('<html><head/><body><p><span style="font-style:normal">File: </span><span style=" font-style:italic;">Not syncing<br/></span><span style="font-style:normal">Folder: </span><span style=" font-style:italic;">Not syncing</span></p></body></html>')
+            self.settings_bookmark_title_as_url_name_checkbox.setEnabled(False)
+            self.settings_bookmark_delete_files_checkbox.setEnabled(False)
+
+    def change_sync_folder(self):
+        def selection_changed(selected: QItemSelection, _: QItemSelection):
+            if bookmark_window.bookmark_tree_widget.itemFromIndex(selected.indexes()[0]).text(2) == '':
+                bookmark_window.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
+            else:
+                bookmark_window.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+
+        bookmark_window = BookmarkDialog()
+        bookmark_window.subfolder_check_box.setEnabled(False)
+        bookmark_window.bookmark_tree_widget.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        bookmark_window.bookmark_tree_widget.selectionModel().selectionChanged.connect(selection_changed)
+
+        if bookmark_window.exec() and bookmark_window.bookmark_tree_widget.selectedItems():
+            file = bookmark_window.bookmark_path_entry.text()
+            idx = bookmark_window.bookmark_tree_widget.selectedIndexes()[0]
+            folder = []
+            while (item := bookmark_window.bookmark_tree_widget.itemFromIndex(idx)) is not None:
+                folder.append(PathComponent(id=item.text(3), name=item.text(0)))
+                idx = idx.parent()
+
+            self.update_current_sync_folder(file, folder[::-1], bookmark_window.bookmark_title_check_box.isChecked())
+
+    # -------------
+    # Scripting tab
+    # -------------
     def add_script(self):
         selection = self.scripts_table.selectedIndexes()
         if len(selection) == 0:
@@ -585,6 +584,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             script.default_remove_brackets = self.remove_brackets_checkbox.isChecked()
             script.local_field = self.local_field_checkbox.isChecked()
             script.overwrite_metadata_table = self.overwrite_metadata_checkbox.isChecked()
+        elif isinstance(script, DownloadScript):
+            script.when = self.when_combo_box.model().invisibleRootItem().child(self.when_combo_box.currentIndex()).member
 
 
     def script_selection_changed(self, selected: QItemSelection, deselected: QItemSelection):
@@ -596,12 +597,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         item = self.scripts_table.model().itemFromIndex(selected.indexes()[0])
         if not isinstance(item, ScriptItem):
+            self.script_type_settings_stack.setCurrentIndex(0)
             return
 
         script: Script = item.script
 
         if isinstance(script, MetadataSuggestionsScript):
-            self.script_type_settings_stack.setCurrentIndex(0)
+            self.script_type_settings_stack.setCurrentIndex(1)
             self.field_name_entry.setText(script.field_name)
             self.timed_field_checkbox.setChecked(script.timed_data)
             self.format_options_group_box.setChecked(script.show_format_options)
@@ -609,6 +611,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.remove_brackets_checkbox.setChecked(script.default_remove_brackets)
             self.local_field_checkbox.setChecked(script.local_field)
             self.overwrite_metadata_checkbox.setChecked(script.overwrite_metadata_table)
+        elif isinstance(script, DownloadScript):
+            self.when_combo_box.setCurrentIndex(self.when_combo_box.findText(script.when.gui_string))
+            self.script_type_settings_stack.setCurrentIndex(2)
 
         self.script_editor.setPlainText(script.script)
 
@@ -624,6 +629,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not item.text().strip():
             item.setText("Script")
 
+    def eventFilter(self, obj, event):
+        et = event.type()
+
+        # Sync action combo boxes
+        for box in self.action_combo_boxes.keys():
+            if obj is box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
+                self.statusbar.clearMessage()
+
+        if obj is self.when_combo_box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
+            self.statusbar.clearMessage()
+
+        return super(MainWindow, self).eventFilter(obj, event)
 
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
@@ -663,7 +680,7 @@ class TreeContextMenu(QMenu):
     def __init__(self, parent: QTreeView, point):
         super().__init__(parent)
         self.parent = parent
-        self.model: LibraryModel = parent.model()
+        self.model: LibraryModel = cast(LibraryModel, parent.model())
 
         self.index = parent.indexAt(point)
 
@@ -709,7 +726,7 @@ class TreeContextMenu(QMenu):
             exclude_action.triggered.connect(self.toggle_excluded)
             self.addAction(exclude_action)
 
-            concat_action = QAction('Concatenate videos of playlist', checkable=True, checked=self.item.concat)
+            concat_action = QAction('Concatenate tracks of playlist', checkable=True, checked=self.item.concat)
             concat_action.triggered.connect(self.toggle_concat)
             self.addAction(concat_action)
 

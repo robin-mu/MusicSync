@@ -2,6 +2,15 @@ from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from musicsync.music_sync_library import GuiStrEnum
 from musicsync.music_sync_library import TrackSyncStatus
+from scripting.script_types import DownloadScriptWhen
+
+
+class GuiComboboxItem(QStandardItem):
+    def __init__(self, member: GuiStrEnum):
+        super().__init__()
+        self.member = member
+        self.setText(member.gui_string)
+        self.setStatusTip(member.gui_status_tip)
 
 
 class ActionComboboxItemModel(QStandardItemModel):
@@ -11,9 +20,8 @@ class ActionComboboxItemModel(QStandardItemModel):
             self.invisibleRootItem().appendRow(GuiComboboxItem(action))
 
 
-class GuiComboboxItem(QStandardItem):
-    def __init__(self, action: GuiStrEnum):
+class DownloadScriptComboboxItemModel(QStandardItemModel):
+    def __init__(self):
         super().__init__()
-        self.action = action
-        self.setText(action.gui_string)
-        self.setStatusTip(action.gui_status_tip)
+        for when in DownloadScriptWhen.__members__.values():
+            self.invisibleRootItem().appendRow(GuiComboboxItem(when))

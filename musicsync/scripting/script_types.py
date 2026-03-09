@@ -10,8 +10,8 @@ from musicsync.utils import GuiStrEnum
 
 
 class ScriptType(GuiStrEnum):
-    DOWNLOAD = auto(), 'Download script', ''
-    METADATA_SUGGESTIONS = auto(), 'Metadata suggestions', ''
+    DOWNLOAD = 'DownloadScript', 'Download script', ''
+    METADATA_SUGGESTIONS = 'MetadataSuggestionsScript', 'Metadata suggestions script', ''
 
     @property
     def cls(self):
@@ -34,15 +34,8 @@ class Script(XmlObject):
     @staticmethod
     def from_xml(el: Element) -> 'XmlObject':
         script = '\n'.join(' ' * int(c.attrib.get('indent', 0)) + (c.text or '') for c in el)
-        cls = None
-        if el.tag == 'MetadataSuggestionsScript':
-            cls = MetadataSuggestionsScript
-        elif el.tag == 'DownloadScript':
-            cls = DownloadScript
 
-        if cls is None:
-            raise AttributeError('Unknown Script type')
-
+        cls = ScriptType(el.tag).cls
         return cls(**(el.attrib | {'script': script}))
 
     def to_xml(self) -> Element:
@@ -108,14 +101,14 @@ class MetadataSuggestionsScript(Script):
 
 
 class DownloadScriptWhen(GuiStrEnum):
-    PRE_PROCESS = auto(), 'Pre-process', 'After yt-dlp extracted the info dict, before the video passes the download filter (i.e. this script will be executed for Tracks with action "Download" or "Redownload metadata").'
-    AFTER_FILTER = auto(), 'After filter', 'After the Track passes yt-dlp\'s filter. This script will only be executed for Tracks with action "Download" that weren\'t filtered by a "Pre-process" script.'
-    VIDEO = auto(), 'Video', ''
-    BEFORE_DL = auto(), 'Before download', ''
-    POST_PROCESS = auto(), 'Post-process', ''
-    AFTER_MOVE = auto(), 'After move', ''
-    AFTER_VIDEO = auto(), 'After video', ''
-    PLAYLIST = auto(), 'Playlist', ''
+    PRE_PROCESS = auto(), 'Pre-process', 'Called once per video, after yt-dlp extracted the info dict, and before the video passes the download filter (i.e. it will be executed for Tracks with action "Download" or "Redownload metadata").'
+    AFTER_FILTER = auto(), 'After filter', 'Called once per video, after the video passes the download filter (i.e. it will only be executed for Tracks with action "Download" that weren\'t filtered by a "Pre-process" script).'
+    VIDEO = auto(), 'Video', 'Called once per requested format for each video, after format selection'
+    BEFORE_DL = auto(), 'Before download', 'Called once per requested format for each video, after output templates (e.g. for the filename) have been evaluated, and before the download starts'
+    POST_PROCESS = auto(), 'Post-process', 'Called once per requested format for each video, after the download finished. Now the URL type and final filepath is available'
+    AFTER_MOVE = auto(), 'After move', 'Called once per requested format for each video, after the file has been moved to its final location'
+    AFTER_VIDEO = auto(), 'After video', 'Called once per video, after all requested formats of the video have been downloaded'
+    PLAYLIST = auto(), 'Playlist', 'Called once at the end of downloading a playlist-type URL. Contains metadata about the playlist and all its entries'
 
 
 @dataclass
