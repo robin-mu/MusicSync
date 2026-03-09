@@ -83,7 +83,7 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
         pindex = QtCore.QPersistentModelIndex(index)
         self._editors[pindex] = combo
         combo.destroyed.connect(lambda obj, pidx=pindex: self._editors.pop(pidx, None))
-        combo.highlighted[int].connect(lambda index, box=combo: self.window.statusbar.showMessage(self.get_status_bar_text(index, box)))
+        combo.highlighted[int].connect(lambda idx, box=combo: self.window.statusbar.showMessage(self.get_status_bar_text(idx, box)))
         combo.activated.connect(lambda *_: self.commit_and_close(combo))
         combo.view().window().installEventFilter(_PopupCloseFilter(combo, self))
         QTimer.singleShot(0, combo.showPopup)

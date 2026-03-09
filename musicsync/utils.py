@@ -37,7 +37,7 @@ class Logger:
         self.prefix = prefix
         self.indent_tabs = 0
 
-    def format_msg(self, msg: str, *args, **kwargs) -> str:
+    def format_msg(self, msg: str, *_, **__) -> str:
         return f'{"    " * self.indent_tabs}{msg}'
 
     def indent(self, by: int=1):

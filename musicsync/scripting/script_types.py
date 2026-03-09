@@ -29,14 +29,14 @@ class Script(XmlObject):
     script: str = ''
 
     enabled: bool = field(default=False, compare=False, repr=False)
-    script_type: ClassVar[ScriptType] = None
+    script_type: ClassVar[ScriptType | None] = None
 
-    @staticmethod
-    def from_xml(el: Element) -> 'XmlObject':
+    @classmethod
+    def from_xml(cls, el: Element) -> 'XmlObject':
         script = '\n'.join(' ' * int(c.attrib.get('indent', 0)) + (c.text or '') for c in el)
 
-        cls = ScriptType(el.tag).cls
-        return cls(**(el.attrib | {'script': script}))
+        subclass = ScriptType(el.tag).cls
+        return subclass(**(el.attrib | {'script': script}))
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
@@ -55,7 +55,7 @@ class Script(XmlObject):
         return el
 
     @abstractmethod
-    def update_xml_attrs(self, attrs) -> str:
+    def update_xml_attrs(self, attrs):
         pass
 
     def __hash__(self):
@@ -88,13 +88,10 @@ class MetadataSuggestionsScript(Script):
         if isinstance(self.overwrite_metadata_table, str):
             self.overwrite_metadata_table = self.overwrite_metadata_table == 'True'
 
-    def update_xml_attrs(self, attrs) -> str:
-        attrs['timed_data'] = str(self.timed_data)
-        attrs['show_format_options'] = str(self.show_format_options)
-        attrs['default_format_as_title'] = str(self.default_format_as_title)
-        attrs['default_remove_brackets'] = str(self.default_remove_brackets)
-        attrs['local_field'] = str(self.local_field)
-        attrs['overwrite_metadata_table'] = str(self.overwrite_metadata_table)
+    def update_xml_attrs(self, attrs):
+        for string_var in ('timed_data', 'show_format_options', 'default_format_as_title',
+                           'default_remove_brackets', 'local_field', 'overwrite_metadata_table'):
+            attrs[string_var] = str(attrs[string_var])
 
     def __hash__(self):
         return super().__hash__()

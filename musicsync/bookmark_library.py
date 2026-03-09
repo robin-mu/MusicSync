@@ -44,8 +44,8 @@ class BookmarkLibrary:
 
     def go_to_path(self, id_path: list[str]) -> Union['BookmarkFolder', 'Bookmark']:
         cursor = self
-        for id in id_path:
-            cursor = cursor.children[id]
+        for idx in id_path:
+            cursor = cursor.children[idx]
 
         return cursor
 

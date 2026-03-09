@@ -38,6 +38,7 @@ class FileSyncModelColumn(IntEnum):
             return 'Track Object'
         return None
 
+    @property
     def df_column_name(self):
         if self == FileSyncModelColumn.URL_NAME:
             return 'url_name'
@@ -89,7 +90,7 @@ class FileSyncModel(DataFrameTableModel):
 
     @staticmethod
     def collection_to_df(collection: Collection) -> pd.DataFrame:
-        columns = [c.df_column_name() for c in FileSyncModelColumn.__members__.values()]
+        columns = [c.df_column_name for c in FileSyncModelColumn.__members__.values()]
 
         df = pd.DataFrame(columns=columns)
         for url in collection.urls:

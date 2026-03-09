@@ -1,6 +1,6 @@
 from typing import Any, Callable
 
-from PySide6.QtCore import Signal, QRunnable, QObject, Slot, QThread
+from PySide6.QtCore import Signal, QObject, Slot, QThread
 
 
 class ThreadingWorker(QObject):

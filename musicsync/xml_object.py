@@ -1,11 +1,12 @@
 from abc import abstractmethod, ABC
+from typing import Self
 from xml.etree.ElementTree import Element
 
 
 class XmlObject(ABC):
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def from_xml(el: Element) -> 'XmlObject':
+    def from_xml(cls, el: Element) -> Self:
         pass
 
     @abstractmethod

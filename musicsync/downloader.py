@@ -5,7 +5,8 @@ from typing import Callable, Any
 
 import pandas as pd
 import yt_dlp
-from yt_dlp.postprocessor import PostProcessor, FFmpegConcatPP
+from yt_dlp.postprocessor.common import PostProcessor
+from yt_dlp.postprocessor import FFmpegConcatPP
 
 import musicsync.music_sync_library as lib
 from .bookmark_library import BookmarkLibrary

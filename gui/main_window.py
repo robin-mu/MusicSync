@@ -70,8 +70,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                  TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
         for box, status in self.action_combo_boxes.items():
             box.setModel(ActionComboboxItemModel(status))
-            box.highlighted[int].connect(lambda index, box=box: self.statusbar.showMessage(
-                box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
+            box.highlighted[int].connect(lambda index, bx=box: self.statusbar.showMessage(
+                bx.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
             box.view().viewport().installEventFilter(self)
 
         # Scripting tab
@@ -776,11 +776,11 @@ class TreeContextMenu(QMenu):
                     for i in range(tree_widget_item.childCount()):
                         add_urls(tree_widget_item.child(i), None if recursion_depth is None else recursion_depth - 1)
                 elif tree_widget_item.text(2):
-                    data = {'url': tree_widget_item.text(2)}
+                    url = {'url': tree_widget_item.text(2)}
                     if bookmark_window.bookmark_title_check_box.isChecked():
-                        data['name'] = tree_widget_item.text(0)
+                        url['name'] = tree_widget_item.text(0)
 
-                    urls.append(data)
+                    urls.append(url)
 
             for item in bookmark_window.bookmark_tree_widget.selectedItems():
                 add_urls(item, recursion_depth=None if bookmark_window.subfolder_check_box.isChecked() else 1)

@@ -1,7 +1,10 @@
+from typing import cast
+
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import QModelIndex, QRect, Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen
 
+from gui.models.data_frame_model import DataFrameTableModel
 from gui.models.item_delegates import ComboBoxDelegate
 
 
@@ -29,6 +32,8 @@ class DataFrameView(QtWidgets.QTableView):
         if self.model() is None:
             return
 
+        model: DataFrameTableModel = cast(DataFrameTableModel, self.model())
+
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
@@ -36,11 +41,11 @@ class DataFrameView(QtWidgets.QTableView):
         top_idx = self.indexAt(QPoint(0, 0))
         bottom_idx = self.indexAt(QPoint(0, self.viewport().height() - 1))
         if not bottom_idx.isValid():
-            bottom_idx = self.model().index(self.model().rowCount() - 1, 0)
+            bottom_idx = model.index(model.rowCount() - 1, 0)
 
-        for col in self.model().fillable_columns():
+        for col in model.fillable_columns():
             for row in range(top_idx.row(), bottom_idx.row() + 1):
-                idx = self.model().index(row, col)
+                idx = model.index(row, col)
                 rect = self._fill_handle_rect(idx)
                 painter.fillRect(rect, QColor(0, 0, 0))
 
@@ -57,10 +62,12 @@ class DataFrameView(QtWidgets.QTableView):
             painter.drawRect(rect)
 
     def mousePressEvent(self, event):
+        model = cast(DataFrameTableModel, self.model())
+
         if event.button() == Qt.MouseButton.LeftButton:
             idx = self.indexAt(event.pos())
 
-            if idx.isValid() and idx.column() in self.model().fillable_columns() and self._fill_handle_rect(idx).contains(event.pos()):
+            if idx.isValid() and idx.column() in model.fillable_columns() and self._fill_handle_rect(idx).contains(event.pos()):
                 self._fill_active = True
                 self._fill_start_index = idx
                 self._fill_start_position = event.pos()
@@ -71,17 +78,19 @@ class DataFrameView(QtWidgets.QTableView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        model = cast(DataFrameTableModel, self.model())
+
         if self._fill_active:
             idx = self.indexAt(QPoint(self._fill_start_position.x(), event.pos().y()))
             if idx.isValid():
-                self._fill_current_index = self.model().index(idx.row(), self._fill_start_index.column())
+                self._fill_current_index = model.index(idx.row(), self._fill_start_index.column())
 
             self.viewport().update()
             event.accept()
             return
 
         idx = self.indexAt(event.pos())
-        if idx.isValid() and idx.column() in self.model().fillable_columns() and self._fill_handle_rect(idx).contains(event.pos()):
+        if idx.isValid() and idx.column() in model.fillable_columns() and self._fill_handle_rect(idx).contains(event.pos()):
             if self.viewport().cursor().shape() != Qt.CursorShape.CrossCursor:
                 self.viewport().setCursor(Qt.CursorShape.CrossCursor)
         else:
@@ -91,12 +100,14 @@ class DataFrameView(QtWidgets.QTableView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        model = cast(DataFrameTableModel, self.model())
+
         if self._fill_active and event.button() == Qt.MouseButton.LeftButton:
             self._apply_fill()
 
             self.viewport().update()
             idx = self.indexAt(event.pos())
-            if not (idx.isValid() and idx.column() in self.model().fillable_columns() and self._fill_handle_rect(
+            if not (idx.isValid() and idx.column() in model.fillable_columns() and self._fill_handle_rect(
                     idx).contains(event.pos())):
                 self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
             event.accept()
@@ -120,8 +131,10 @@ class DataFrameView(QtWidgets.QTableView):
             if not (model.flags(idx) & Qt.ItemFlag.ItemIsEditable):
                 continue
 
-            if isinstance(self.itemDelegateForColumn(col), ComboBoxDelegate) and src.gui_string not in self.itemDelegateForColumn(col).get_combobox_items(idx):
-                continue
+            if isinstance(self.itemDelegateForColumn(col), ComboBoxDelegate):
+                delegate = cast(ComboBoxDelegate, self.itemDelegateForColumn(col))
+                if src.gui_string not in delegate.get_combobox_items(idx):
+                    continue
 
             model.setData(idx, src, Qt.ItemDataRole.EditRole)
         model.layoutChanged.emit()

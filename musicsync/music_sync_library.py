@@ -166,8 +166,8 @@ class Folder(XmlObject):
     name: str
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
 
-    @staticmethod
-    def from_xml(el: Element) -> 'Folder':
+    @classmethod
+    def from_xml(cls, el: Element) -> 'Folder':
         children = []
         for child in el:
             if child.tag == 'Folder':
@@ -175,7 +175,7 @@ class Folder(XmlObject):
             elif child.tag == 'Collection':
                 children.append(Collection.from_xml(child))
 
-        return Folder(children=children, **el.attrib)
+        return cls(children=children, **el.attrib)
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
@@ -192,9 +192,9 @@ class FileTag(XmlObject):
     name: str
     format: str = ''
 
-    @staticmethod
-    def from_xml(el: Element) -> 'FileTag':
-        return FileTag(**el.attrib)
+    @classmethod
+    def from_xml(cls, el: Element) -> 'FileTag':
+        return cls(**el.attrib)
 
     def to_xml(self) -> Element:
         return et.Element('FileTag', **vars(self))
@@ -298,26 +298,20 @@ class Collection(XmlObject):
 
     downloader: 'dl.MusicSyncDownloader | None' = None
 
-    def __post_init__(self):
-        if isinstance(self.save_playlists_to_subfolders, str):
-            self.save_playlists_to_subfolders = self.save_playlists_to_subfolders == 'True'
-        if isinstance(self.sync_bookmark_title_as_url_name, str):
-            self.sync_bookmark_title_as_url_name = self.sync_bookmark_title_as_url_name == 'True'
-        if isinstance(self.sync_delete_files, str):
-            self.sync_delete_files = self.sync_delete_files == 'True'
-        if isinstance(self.exclude_after_download, str):
-            self.exclude_after_download = self.exclude_after_download == 'True'
-        if isinstance(self.auto_concat_urls, str):
-            self.auto_concat_urls = self.auto_concat_urls == 'True'
+    @classmethod
+    def from_xml(cls, el: Element) -> 'Collection':
+        kwargs: dict[str, Any] = el.attrib.copy()
+        kwargs['_urls'] = []
 
-    @staticmethod
-    def from_xml(el: Element) -> 'Collection':
-        kwargs: dict[str, Any] = {'_urls': []}
+        for bool_var in ('save_playlists_to_subfolders', 'sync_bookmark_title_as_url_name', 'sync_delete_files',
+                         'exclude_after_download', 'auto_concat_urls'):
+            kwargs[bool_var] = kwargs.get(bool_var) == 'True'
+
         for child in el:
             if child.tag == 'BookmarkSync':
                 kwargs['sync_bookmark_file'] = child.attrib['file']
-                kwargs['sync_bookmark_title_as_url_name'] = child.attrib['title_as_url_name']
-                kwargs['sync_delete_files'] = child.attrib['delete_files']
+                kwargs['sync_bookmark_title_as_url_name'] = child.attrib['title_as_url_name'] == 'True'
+                kwargs['sync_delete_files'] = child.attrib['delete_files'] == 'True'
                 kwargs['sync_bookmark_path'] = []
                 for path_component in child:
                     kwargs['sync_bookmark_path'].append(PathComponent(**path_component.attrib))
@@ -331,22 +325,16 @@ class Collection(XmlObject):
                     if ref.tag == 'ScriptReference':
                         kwargs['script_settings'].append(ScriptReference(ref.attrib['name'], ref.attrib['enabled'] == 'True', int(ref.attrib['priority'])))
 
-        return Collection(**(kwargs | el.attrib))
+        return cls(**kwargs)
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
-        attrs.pop('_urls')
-        attrs.pop('sync_bookmark_file')
-        attrs.pop('sync_bookmark_path')
-        attrs.pop('sync_bookmark_title_as_url_name')
-        attrs.pop('sync_delete_files')
-        attrs.pop('sync_actions')
-        attrs.pop('script_settings')
-        attrs.pop('downloader')
-        attrs.pop('excluded_yt_dlp_fields')
-        attrs['save_playlists_to_subfolders'] = str(self.save_playlists_to_subfolders)
-        attrs['exclude_after_download'] = str(self.exclude_after_download)
-        attrs['auto_concat_urls'] = str(self.auto_concat_urls)
+        for pop_var in ('_urls', 'sync_bookmark_file', 'sync_bookmark_path', 'sync_bookmark_title_as_url_name',
+                        'sync_delete_files', 'sync_actions', 'script_settings', 'downloader', 'excluded_yt_dlp_fields'):
+            attrs.pop(pop_var)
+
+        for str_var in ('save_playlists_to_subfolders', 'exclude_after_download', 'auto_concat_urls'):
+            attrs[str_var] = str(attrs[str_var])
 
         el = et.Element('Collection', **attrs)
         if self.excluded_yt_dlp_fields != Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS:
@@ -366,15 +354,10 @@ class Collection(XmlObject):
         if self.script_settings:
             script_settings = et.Element('ScriptSettings')
             for ref in self.script_settings:
-                attrib = {
-                    'name': ref.name,
-                    'enabled': str(ref.enabled),
-                    'priority': str(ref.priority),
-                }
-                script_settings.append(et.Element('ScriptReference', attrib=attrib))
+                script_settings.append(et.Element('ScriptReference', name=ref.name, enabled=str(ref.enabled), priority=str(ref.priority)))
             el.append(script_settings)
 
-        for url in self._urls:
+        for url in self.urls:
             el.append(url.to_xml())
         return el
 
@@ -432,35 +415,32 @@ class CollectionUrl(XmlObject):
     is_playlist: bool | None = None
     tracks: dict[str, 'Track'] = field(default_factory=dict)
 
-    def __post_init__(self):
-        if isinstance(self.excluded, str):
-            self.excluded = self.excluded == 'True'
-        if isinstance(self.concat, str):
-            self.concat = self.concat == 'True'
-        if isinstance(self.is_playlist, str):
-            if self.is_playlist == 'None':
-                self.is_playlist = None
-            else:
-                self.is_playlist = self.is_playlist == 'True'
-        if isinstance(self.save_to_subfolder, str):
-            self.save_to_subfolder = self.save_to_subfolder == 'True'
-
-    @staticmethod
-    def from_xml(el: Element) -> 'CollectionUrl':
+    @classmethod
+    def from_xml(cls, el: Element) -> 'CollectionUrl':
         tracks = {}
         for child in el:
             if child.tag == 'Track':
                 track = Track.from_xml(child)
                 tracks[track.url] = track
-        return CollectionUrl(**el.attrib, tracks=tracks)
+
+        attrib: dict[str, Any] = el.attrib.copy()
+
+        for bool_var in ('excluded', 'concat', 'save_to_subfolder'):
+            attrib[bool_var] = str(attrib.get(bool_var)) == 'True'
+
+        if not 'is_playlist' in attrib or attrib.get('is_playlist') == 'None':
+            attrib['is_playlist'] = None
+        else:
+            attrib['is_playlist'] = attrib.get('is_playlist') == 'True'
+
+        return cls(**attrib, tracks=tracks)
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
         attrs.pop('tracks')
-        attrs['excluded'] = str(self.excluded)
-        attrs['concat'] = str(self.concat)
-        attrs['is_playlist'] = str(self.is_playlist)
-        attrs['save_to_subfolder'] = str(self.save_to_subfolder)
+
+        for string_var in ('excluded', 'concat', 'is_playlist', 'save_to_subfolder'):
+            attrs[string_var] = str(attrs[string_var])
 
         el = et.Element('CollectionUrl', **attrs)
         for track in self.tracks.values():
@@ -481,20 +461,19 @@ class Track(XmlObject):
     permanently_downloaded: bool = False
     metadata_status: MetadataStatus = MetadataStatus.NEW
 
-    @staticmethod
-    def from_xml(el: Element) -> 'Track':
+    @classmethod
+    def from_xml(cls, el: Element) -> 'Track':
         attrib: dict[str, Any] = el.attrib.copy()
         attrib['status'] = TrackSyncStatus(attrib['status'])
         attrib['metadata_status'] = MetadataStatus(attrib['metadata_status'])
         attrib['permanently_downloaded'] = attrib['permanently_downloaded'] == 'True'
 
-        return Track(**el.attrib)
+        return cls(**attrib)
 
     def to_xml(self) -> Element:
-        return et.Element('Track', url=self.url, status=self.status, filename=self.filename,
-                          permanently_downloaded=str(self.permanently_downloaded),
-                          title=self.title, playlist_index=self.playlist_index,
-                          metadata_status=self.metadata_status)
+        attrs = vars(self).copy()
+        attrs['permanently_downloaded'] = str(self.permanently_downloaded)
+        return et.Element('Track', **attrs)
 
 
 if __name__ == '__main__':

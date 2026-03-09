@@ -13,7 +13,7 @@ class BookmarkDialog(QDialog, Ui_Dialog):
         self.bookmark_path_entry.textChanged.connect(self.load_file)
         self.browse_button.pressed.connect(self.browse_file)
         self.bookmark_tree_widget.expanded.connect(self.expanded)
-        self.buttonBox.button(QDialogButtonBox.Ok).clicked.connect(self.close)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).clicked.connect(self.close)
 
     def browse_file(self):
         filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter='Firefox bookmark file (places.sqlite) (places.sqlite)')
@@ -28,6 +28,8 @@ class BookmarkDialog(QDialog, Ui_Dialog):
                     append_tree(new_child, child.children)
                 elif isinstance(child, Bookmark):
                     new_child = QTreeWidgetItem([child.bookmark_title, child.page_title, child.url, child.id])
+                else:
+                    raise ValueError('Child is neither a Bookmark nor a BookmarkFolder')
 
                 if parent is None:
                     self.bookmark_tree_widget.addTopLevelItem(new_child)
@@ -47,6 +49,6 @@ class BookmarkDialog(QDialog, Ui_Dialog):
         except pd.errors.DatabaseError:
             QMessageBox.warning(self, 'Error', 'The bookmark database could not be opened because it is locked. Close your browser and try again.')
 
-    def expanded(self, *args):
+    def expanded(self, *_):
         for i in range(self.bookmark_tree_widget.columnCount()):
             self.bookmark_tree_widget.resizeColumnToContents(i)
