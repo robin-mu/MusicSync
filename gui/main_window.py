@@ -34,20 +34,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
 
         # Menu bar
-        self.actionNew_library.triggered.connect(self.new_library)
-        self.actionOpen_library.triggered.connect(self.open_library)
-        self.actionSave_library.triggered.connect(self.save_library)
-        self.actionSave_library_as.triggered.connect(self.save_library_as)
+        self.action_new_library.triggered.connect(self.new_library)
+        self.action_open_library.triggered.connect(self.open_library)
+        self.action_save_library.triggered.connect(self.save_library)
+        self.action_save_library_as.triggered.connect(self.save_library_as)
 
         # Library Tree View
-        self.treeView.setModel(LibraryModel('a.pkl'))
-        self.treeView.expandAll()
+        self.library_tree_view.setModel(LibraryModel('a.pkl'))
+        self.library_tree_view.expandAll()
 
-        self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
-        self.treeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.treeView.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.treeView, point))
+        self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+        self.library_tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.library_tree_view.customContextMenuRequested.connect(lambda point: TreeContextMenu(self.library_tree_view, point))
 
-        self.tabWidget.currentChanged.connect(self.tab_changed)
+        self.tab_widget.currentChanged.connect(self.tab_changed)
 
         # File sync tab
         self.sync_status_table.setItemDelegateForColumn(FileSyncModelColumn.ACTION, ActionComboboxDelegate(
@@ -75,7 +75,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             box.view().viewport().installEventFilter(self)
 
         # Scripting tab
-        self.scripts_table.setModel(ScriptsModel(deepcopy(self.treeView.model().scripts), window=self))
+        self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
         self.scripts_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.scripts_table.expandAll()
         self.scripts_table.selectionModel().selectionChanged.connect(self.script_selection_changed)
@@ -100,7 +100,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     # Menu bar
     # --------
     def new_library(self):
-        if self.treeView.model().has_changed():
+        if self.library_tree_view.model().has_changed():
             answer = QMessageBox.question(self, 'Save File',
                                           'The current file has not been saved yet. Do you want to save it?',
                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
@@ -111,13 +111,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             elif answer == QMessageBox.StandardButton.Cancel:
                 return
 
-        self.treeView.setModel(LibraryModel())
-        self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+        self.library_tree_view.setModel(LibraryModel())
+        self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.update_sync_buttons()
         self.update_sync_stack()
 
     def open_library(self):
-        if self.treeView.model().has_changed():
+        if self.library_tree_view.model().has_changed():
             answer = QMessageBox.question(self, 'Save Library',
                                           'The current library has not been saved yet. Do you want to save it?',
                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
@@ -130,17 +130,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="XML files (*.xml) (*.xml)")
         if filename:
-            self.treeView.setModel(LibraryModel(filename))
-            self.treeView.selectionModel().selectionChanged.connect(self.tree_selection_changed)
-            self.treeView.expandAll()
+            self.library_tree_view.setModel(LibraryModel(filename))
+            self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+            self.library_tree_view.expandAll()
             self.update_sync_buttons()
             self.update_sync_stack()
 
     def save_library(self):
         self.save_settings()
-        if self.treeView.model().path:
-            self.treeView.model().to_pickle()
-            self.treeView.model().to_xml()
+        if self.library_tree_view.model().path:
+            self.library_tree_view.model().to_pickle()
+            self.library_tree_view.model().to_xml()
             return True
 
         return self.save_library_as()
@@ -151,9 +151,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if not filename.endswith('.pkl'):
                 filename += '.pkl'
 
-            self.treeView.model().to_pickle(filename)
-            self.treeView.model().to_xml(filename)
-            self.treeView.model().path = filename
+            self.library_tree_view.model().to_pickle(filename)
+            self.library_tree_view.model().to_xml(filename)
+            self.library_tree_view.model().path = filename
             return True
         return False
 
@@ -161,11 +161,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.save_settings(self.get_selected_collection())
 
     def get_selected_collection(self) -> CollectionItem | None:
-        selected_indexes = self.treeView.selectedIndexes()
+        selected_indexes = self.library_tree_view.selectedIndexes()
         if not selected_indexes:
             return None
 
-        current_collection = self.treeView.model().itemFromIndex(selected_indexes[0])
+        current_collection = self.library_tree_view.model().itemFromIndex(selected_indexes[0])
         if isinstance(current_collection, FolderItem):
             return None
 
@@ -180,13 +180,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not selected.indexes():
             return
 
-        selected_collection = self.treeView.model().itemFromIndex(selected.indexes()[0])
+        selected_collection = self.library_tree_view.model().itemFromIndex(selected.indexes()[0])
 
         if isinstance(selected_collection, CollectionUrlItem):
             selected_collection = selected_collection.parent()
 
         if deselected.indexes():
-            deselected_collection = self.treeView.model().itemFromIndex(deselected.indexes()[0])
+            deselected_collection = self.library_tree_view.model().itemFromIndex(deselected.indexes()[0])
             if isinstance(deselected_collection, CollectionUrlItem):
                 deselected_collection = deselected_collection.parent()
 
@@ -234,7 +234,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def save_settings(self, item: CollectionItem | None = None):
         if item is None:
-            item = self.treeView.model().itemFromIndex(self.treeView.currentIndex())
+            item = self.library_tree_view.model().itemFromIndex(self.library_tree_view.currentIndex())
         if item is None or isinstance(item, FolderItem):
             return
         if isinstance(item, CollectionUrlItem):
@@ -272,7 +272,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
         self.save_script()
-        self.treeView.model().scripts = deepcopy(self.scripts_table.model().scripts)
+        self.library_tree_view.model().scripts = deepcopy(self.scripts_table.model().scripts)
 
     def update_tables(self):
         self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
@@ -645,7 +645,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def closeEvent(self, event: QCloseEvent):
         self.save_settings()
 
-        if self.treeView.model().has_changed():
+        if self.library_tree_view.model().has_changed():
             answer = QMessageBox.question(self, 'Save Library',
                                           'The current library has not been saved yet. Do you want to save it?',
                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
