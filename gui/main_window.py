@@ -4,7 +4,7 @@ from typing import cast
 
 import pandas as pd
 from PySide6 import QtWidgets
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QThread, QItemSelectionModel
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QThread, QItemSelectionModel, QSignalBlocker
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QDialogButtonBox,
@@ -70,7 +70,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                  TrackSyncStatus.LOCAL_FILE, TrackSyncStatus.PERMANENTLY_DOWNLOADED, TrackSyncStatus.DOWNLOADED]))
         for box, status in self.action_combo_boxes.items():
             box.setModel(ActionComboboxItemModel(status))
-            box.highlighted[int].connect(lambda index, bx=box: self.statusbar.showMessage(
+            box.highlighted.connect(lambda index, bx=box: self.statusbar.showMessage(
                 bx.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
             box.view().viewport().installEventFilter(self)
 
@@ -87,8 +87,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.script_down_button.pressed.connect(functools.partial(self.move_script, direction=1))
 
         self.when_combo_box.setModel(DownloadScriptComboboxItemModel())
-        self.when_combo_box.highlighted[int].connect(lambda index: self.statusbar.showMessage(
-                self.when_combo_box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
+        self.when_combo_box.highlighted.connect(lambda index: self.statusbar.showMessage(
+            self.when_combo_box.itemData(index, Qt.ItemDataRole.StatusTipRole) or ''))
         self.when_combo_box.view().viewport().installEventFilter(self)
 
         self.threads: list[QThread] = []
@@ -612,7 +612,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.local_field_checkbox.setChecked(script.local_field)
             self.overwrite_metadata_checkbox.setChecked(script.overwrite_metadata_table)
         elif isinstance(script, DownloadScript):
-            self.when_combo_box.setCurrentIndex(self.when_combo_box.findText(script.when.gui_string))
+            with QSignalBlocker(self.when_combo_box):  # so that the "highlighted" signal is not emitted
+                self.when_combo_box.setCurrentIndex(self.when_combo_box.findText(script.when.gui_string))
             self.script_type_settings_stack.setCurrentIndex(2)
 
         self.script_editor.setPlainText(script.script)
@@ -637,6 +638,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if obj is box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
                 self.statusbar.clearMessage()
 
+        # Download script when setting
         if obj is self.when_combo_box.view().viewport() and et in (QEvent.Type.Leave, QEvent.Type.Hide):
             self.statusbar.clearMessage()
 
