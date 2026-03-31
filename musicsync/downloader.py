@@ -343,7 +343,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         def filter_redownloaded(info_dict, url: lib.CollectionUrl, entries_df: pd.DataFrame) -> str | None:
             info_dicts.append(info_dict)
 
-            if entries_df.loc[str(info_dict['playlist_index']), 'action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA:
+            if entries_df.loc[str(info_dict.get('playlist_index', '')), 'action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA:
                 return "Skipping download since sync action is set to REDOWNLOAD_METADATA"
 
             return None
