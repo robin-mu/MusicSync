@@ -14,28 +14,33 @@ from musicsync.music_sync_library import Collection, TrackSyncAction, TrackSyncS
 
 class FileSyncModelColumn(IntEnum):
     URL_NAME = 0
-    FILENAME = 1
-    TRACK_TITLE = 2
-    STATUS = 3
-    ACTION = 4
-    COLLECTION_URL = 5
-    TRACK = 6
+    PLAYLIST_INDEX = 1
+    TITLE = 2
+    FILENAME = 3
+    STATUS = 4
+    ACTION = 5
+
+    # internal columns
+    COLLECTION_URL = 6
+    TRACK_URL = 7
+    TRACK_OCCURRENCE_INDEX = 8
+
 
     def __str__(self):
         if self == FileSyncModelColumn.URL_NAME:
             return 'URL Name'
         elif self == FileSyncModelColumn.FILENAME:
             return 'Filename'
-        elif self == FileSyncModelColumn.TRACK_TITLE:
-            return 'Track Title'
+        elif self == FileSyncModelColumn.TITLE:
+            return 'Video Title'
         elif self == FileSyncModelColumn.STATUS:
             return 'Status'
         elif self == FileSyncModelColumn.ACTION:
             return 'Action'
         elif self == FileSyncModelColumn.COLLECTION_URL:
             return 'Collection URL Object'
-        elif self == FileSyncModelColumn.TRACK:
-            return 'Track Object'
+        elif self == FileSyncModelColumn.PLAYLIST_INDEX:
+            return 'Playlist Index'
         return None
 
     @property
@@ -44,31 +49,39 @@ class FileSyncModelColumn(IntEnum):
             return 'url_name'
         elif self == FileSyncModelColumn.FILENAME:
             return 'filename'
-        elif self == FileSyncModelColumn.TRACK_TITLE:
-            return 'track_title'
+        elif self == FileSyncModelColumn.TITLE:
+            return 'title'
         elif self == FileSyncModelColumn.STATUS:
             return 'status'
         elif self == FileSyncModelColumn.ACTION:
             return 'action'
         elif self == FileSyncModelColumn.COLLECTION_URL:
             return 'collection_url'
-        elif self == FileSyncModelColumn.TRACK:
-            return 'track'
+        elif self == FileSyncModelColumn.PLAYLIST_INDEX:
+            return 'playlist_index'
+        elif self == FileSyncModelColumn.TRACK_URL:
+            return 'track_url'
+        elif self == FileSyncModelColumn.TRACK_OCCURRENCE_INDEX:
+            return 'track_occurrence_index'
         return None
 
 
 class FileSyncModel(DataFrameTableModel):
-    def __init__(self, collection: CollectionItem, parent):
-        df = FileSyncModel.collection_to_df(collection.to_xml_object())
-        df.sort_values(by='status',
-                       inplace=True,
-                       kind='mergesort',
-                       key=lambda col: col.apply(lambda s: s.sort_key))
+    def __init__(self, collection_item: CollectionItem, parent):
+        if collection_item.compare_result is None:
+            df = FileSyncModel.collection_to_df(collection_item.to_xml_object())
+            df.sort_values(by='status',
+                           inplace=True,
+                           kind='mergesort',
+                           key=lambda col: col.apply(lambda s: s.sort_key))
+        else:
+            df = FileSyncModel.process_compare_result(collection_item)
 
         super().__init__(df, parent)
 
     def internal_columns(self) -> int:
-        return len([FileSyncModelColumn.TRACK, FileSyncModelColumn.COLLECTION_URL])
+        return len([FileSyncModelColumn.COLLECTION_URL, FileSyncModelColumn.TRACK_URL,
+                    FileSyncModelColumn.TRACK_OCCURRENCE_INDEX])
 
     def delegate_columns(self) -> list[int]:
         return [FileSyncModelColumn.ACTION]
@@ -94,17 +107,40 @@ class FileSyncModel(DataFrameTableModel):
 
         df = pd.DataFrame(columns=columns)
         for url in collection.urls:
-            url_df = pd.DataFrame.from_records([dict(zip(columns, [url.name,
-                                                                   track.filename,
-                                                                   track.title,
-                                                                   track.status,
-                                                                   collection.sync_actions[track.status],
-                                                                   url,
-                                                                   track])) for track in url.tracks.values()])
+            url_df = pd.DataFrame.from_records([dict(zip(columns, [
+                url.name,
+                track.playlist_index,
+                track.title,
+                track.filename,
+                track.status,
+                collection.sync_actions[track.status],
+                url,
+                track.url,
+                track.occurrence_index
+            ])) for track in url.tracks.itertuples()])
 
             df = pd.concat([df, url_df])
 
         return df
+
+    @staticmethod
+    def process_compare_result(collection_item: CollectionItem) -> pd.DataFrame:
+        compare_result = collection_item.compare_result
+        assert compare_result is not None  # make PyCharm happy
+
+        columns = [c.df_column_name for c in FileSyncModelColumn.__members__.values()]
+
+        return pd.DataFrame(dict(zip(columns, [
+            compare_result['collection_url'].apply(lambda x: x.name),
+            compare_result['playlist_index'].fillna(''),
+            compare_result['title'],
+            compare_result['filename'],
+            compare_result['status'],
+            compare_result['status'].apply(lambda x: collection_item.sync_actions[x]),
+            compare_result['collection_url'],
+            compare_result['url'],
+            compare_result['occurrence_index']
+        ])))
 
 class ActionComboboxDelegate(ComboBoxDelegate):
     def __init__(self, update_callback=None, window=None, view=None):

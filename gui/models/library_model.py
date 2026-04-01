@@ -6,7 +6,7 @@ from xml.etree.ElementTree import Element
 import pandas as pd
 from PySide6.QtGui import QIcon
 
-from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Track, Script
+from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Script
 from .xml_model import XmlObjectModel, XmlObjectModelItem
 
 
@@ -105,12 +105,8 @@ class LibraryModel(XmlObjectModel):
         return new_collection
 
     @staticmethod
-    def add_url(parent: CollectionItem, url: str='', name: str= '', tracks: dict[str, Track] | None=None):
-        if tracks is None:
-            tracks = {}
-
-        new_url = CollectionUrlItem(url=url, name=name, tracks=tracks,
-                                    concat=parent.auto_concat_urls, resolved=False)
+    def add_url(parent: CollectionItem, url: str='', name: str= ''):
+        new_url = CollectionUrlItem(url=url, name=name, concat=parent.auto_concat_urls, resolved=False)
         parent.appendRow(new_url)
         return new_url
 
@@ -168,6 +164,7 @@ class CollectionItem(XmlObjectModelItem):
         self.syncing: bool = False
         self.sync_progress: float = 0
         self.sync_text: str = ''
+        self.compare_result: pd.DataFrame | None = None
 
     @staticmethod
     def from_xml_object(collection: Collection) -> 'CollectionItem':
@@ -183,6 +180,7 @@ class CollectionItem(XmlObjectModelItem):
         args.pop('syncing')
         args.pop('sync_progress')
         args.pop('sync_text')
+        args.pop('compare_result')
 
         children = []
         for i in range(self.rowCount()):
@@ -191,8 +189,13 @@ class CollectionItem(XmlObjectModelItem):
 
         return Collection(name=self.text(), _urls=children, **args)
 
+    def update_children(self, collection_xml: Collection):
+        self.removeRows(0, self.rowCount())
 
-    def get_real_path(self, url: 'CollectionUrlItem', track: 'Track | None'=None):
+        for collection_url in collection_xml.urls:
+            self.appendRow(CollectionUrlItem.from_xml_object(collection_url))
+
+    def get_real_path(self, url: 'CollectionUrlItem', track=None):
         folder = self.folder_path
         if self.save_playlists_to_subfolders and url.is_playlist:
             folder = os.path.join(folder, url.text())
@@ -209,7 +212,7 @@ class CollectionUrlItem(XmlObjectModelItem):
         super().__init__()
         self.name = kwargs.get('name', '')
         self.url: str = kwargs.get('url', '')
-        self.tracks: dict[str, Track] = kwargs.get('tracks', {})
+        self.tracks: pd.DataFrame = kwargs.get('tracks', pd.DataFrame())
         self.excluded: bool = kwargs.get('excluded', False)
         self.concat: bool = kwargs.get('concat', False)
         self.is_playlist: bool | None = kwargs.get('is_playlist', None)
@@ -228,7 +231,7 @@ class CollectionUrlItem(XmlObjectModelItem):
 
     @staticmethod
     def from_xml_object(collection_url: CollectionUrl) -> 'CollectionUrlItem':
-        return CollectionUrlItem(**(vars(collection_url) | {'tracks': deepcopy(collection_url.tracks)}))
+        return CollectionUrlItem(**(vars(collection_url) | {'tracks': pd.DataFrame(deepcopy(collection_url.tracks.to_dict()))}))
 
     def to_xml_object(self):
         resolved = not self.font().italic()

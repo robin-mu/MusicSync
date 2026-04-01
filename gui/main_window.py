@@ -275,15 +275,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.library_tree_view.model().scripts = deepcopy(self.scripts_table.model().scripts)
 
     def update_tables(self):
-        self.sync_status_table.setModel(FileSyncModel(self.get_selected_collection(), parent=self))
+        current_collection = self.get_selected_collection()
+        if current_collection is None:
+            return
+
+        self.sync_status_table.setModel(FileSyncModel(current_collection, parent=self))
 
         self.sync_status_table.horizontalHeader().setSectionResizeMode(FileSyncModelColumn.ACTION, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         for col in FileSyncModelColumn.__members__.values():
             if col != FileSyncModelColumn.ACTION:
                 self.sync_status_table.horizontalHeader().setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.update_sync_buttons()
-
-        current_collection = self.get_selected_collection()
 
         # Scripts table
         self.scripts_table.model().update_table(current_collection.script_settings)
@@ -319,53 +321,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_sync_buttons()
         self.update_sync_stack()
 
-    def compare_finished(self, error, extra):
+    def compare_finished(self, result, extra):
         selected_collection: CollectionItem = extra['selected_collection']
         selected_collection_xml: Collection = extra['selected_collection_xml']
 
-        if error is None:
-            old_urls: dict[str, CollectionUrlItem] = {selected_collection.child(i).url: selected_collection.child(i) for
-                                                      i in range(selected_collection.rowCount())}
-            new_urls: dict[str, CollectionUrl] = {u.url: u for u in selected_collection_xml.urls}
+        print(result)
 
-            print(old_urls)
-            print(new_urls)
+        if not isinstance(result, Exception):
+            if selected_collection_xml.sync_bookmark_file:
+                selected_collection.update_children(selected_collection_xml)
 
-            rows_to_be_removed = []
-            for i, (old_url, item) in enumerate(old_urls.items()):
-                if old_url in new_urls:
-                    item.update(new_urls[old_url])
-                else:
-                    rows_to_be_removed.append(i)
-
-                    # Don't delete files from within MusicSync if not explicitly prompted
-                    # folder = selected_collection.get_real_path(item)
-                    # delete = QMessageBox.question(self,
-                    #                               'Delete files',
-                    #                               f'The URL {item.text()} has been deleted from the bookmark folder. Do you want to delete the corresponding files located at {folder}?',
-                    #                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                    # if delete == QMessageBox.StandardButton.Yes:
-                    #     for track in item.tracks.values():
-                    #         path = selected_collection.get_real_path(item, track)
-                    #         if os.path.isfile(path):
-                    #             os.remove(path)
-
-            for i in sorted(rows_to_be_removed, reverse=True):
-                selected_collection.removeRow(i)
-
-            for new_url, item in new_urls.items():
-                if new_url not in old_urls:
-                    selected_collection.appendRow(CollectionUrlItem.from_xml_object(item))
+            selected_collection.compare_result = result
 
             self.update_tables()
         else:
-            if isinstance(error, pd.errors.DatabaseError):
+            if isinstance(result, pd.errors.DatabaseError):
                 QMessageBox.warning(self, 'Error',
                                     'Bookmark sync could not be performed because the database is locked. Close your browser and try again.')
-            elif isinstance(error, InterruptedError):
+            elif isinstance(result, InterruptedError):
                 return
             else:
-                QMessageBox.warning(self, 'Error', f'There was an error while comparing this collection: {error}')
+                QMessageBox.warning(self, 'Error', f'There was an error while comparing this collection: {result}')
 
         selected_collection.comparing = False
         self.update_sync_buttons()
@@ -403,6 +379,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def sync_finished(self, result, extra):
         print(result, extra)
         extra['selected_collection'].syncing = False
+        extra['selected_collection'].compare_result = None
         self.update_sync_buttons()
         self.update_sync_stack()
 
@@ -748,6 +725,7 @@ class TreeContextMenu(QMenu):
         self.exec(self.parent.mapToGlobal(point))
 
     def add_folder(self, is_folder: bool):
+        assert isinstance(self.item, FolderItem)  # make ide happy
         if is_folder:
             new_folder = self.model.add_folder(self.item)
         else:
@@ -762,6 +740,8 @@ class TreeContextMenu(QMenu):
         self.model.removeRow(self.index.row(), parent_index)
 
     def add_url(self):
+        assert isinstance(self.item, CollectionItem)  # make ide happy
+
         new_url = self.model.add_url(parent=self.item)
 
         new_index = self.model.indexFromItem(new_url)
@@ -769,6 +749,8 @@ class TreeContextMenu(QMenu):
         self.parent.edit(new_index)
 
     def import_from_bookmarks(self):
+        assert isinstance(self.item, CollectionItem)  # make ide happy
+
         bookmark_window = BookmarkDialog(self.parent)
         if bookmark_window.exec():
             urls = []

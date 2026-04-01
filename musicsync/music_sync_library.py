@@ -8,10 +8,10 @@ from typing import Any, ClassVar, Union, Callable
 from xml.etree.ElementTree import Element
 
 import pandas as pd
-from pandas import DataFrame
 from yt_dlp.postprocessor.common import PostProcessor
 
 import musicsync.downloader as dl
+from bookmark_library import Bookmark
 from musicsync.scripting.script_types import Script
 from .utils import classproperty, GuiStrEnum
 from .xml_object import XmlObject
@@ -103,7 +103,7 @@ class MetadataStatus(GuiStrEnum):
 @dataclass
 class MusicSyncLibrary:
     scripts: set['Script'] = field(default_factory=set)
-    metadata_table: DataFrame = field(default_factory=pd.DataFrame)
+    metadata_table: pd.DataFrame = field(default_factory=pd.DataFrame)
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
 
     @classmethod
@@ -364,15 +364,37 @@ class Collection(XmlObject):
     def add_url(self, url, name, *args, **kwargs):
         self._urls.append(CollectionUrl(url=url, name=name, concat=self.auto_concat_urls, save_to_subfolder=self.save_playlists_to_subfolders, *args, **kwargs))
 
+    def bookmark_sync(self, bookmarks: list[Bookmark]) -> tuple[list, list]:
+        occurrences = {}
+        local_urls: dict[tuple[str, int], CollectionUrl] = {}
+
+        # build mapping from url, occurrence index -> collection url object
+        for url in self.urls:
+            occurrences[url.url] = occurrences.get(url.url, 0) + 1
+            local_urls[(url.url, occurrences[url.url])] = url
+
+        occurrences = {}
+        self._urls = []
+        added_urls = []
+        for bookmark in bookmarks:
+            occurrences[bookmark.url] = occurrences.get(bookmark.url, 0) + 1
+            if (bookmark.url, occurrences[bookmark.url]) in local_urls:
+                self._urls.append(local_urls.pop((bookmark.url, occurrences[bookmark.url])))
+            else:
+                self.add_url(url=bookmark.url, name=bookmark.bookmark_title if self.sync_bookmark_title_as_url_name else '')
+                added_urls.append((bookmark.url, bookmark.bookmark_title))
+
+        return added_urls, list(local_urls.values())
+
     @property
     def urls(self) -> list[CollectionUrl]:
         return self._urls
 
-    def compare(self, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> None | Exception:
+    def compare(self, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> pd.DataFrame | Exception:
         self.downloader = dl.MusicSyncDownloader(self)
 
         try:
-            self.downloader.compare(progress_callback=progress_callback, interruption_callback=interruption_callback)
+            return self.downloader.compare(progress_callback=progress_callback, interruption_callback=interruption_callback)
         except Exception as e:
             return e
 
@@ -385,7 +407,7 @@ class Collection(XmlObject):
         # except Exception as e:
         #     return e
 
-    def get_real_path(self, url: 'CollectionUrl', track: 'Track | None'=None):
+    def get_real_path(self, url: 'CollectionUrl', track=None):
         folder = self.folder_path
         if self.save_playlists_to_subfolders and url.is_playlist:
             folder = os.path.join(folder, url.name)
@@ -405,7 +427,7 @@ class YTMusicAlbumCover(PostProcessor):
         return [], info
 
 
-@dataclass(eq=True, order=True)
+@dataclass(order=True)
 class CollectionUrl(XmlObject):
     url: str
     name: str = ''
@@ -413,15 +435,37 @@ class CollectionUrl(XmlObject):
     concat: bool = False
     save_to_subfolder: bool = False
     is_playlist: bool | None = None
-    tracks: dict[str, 'Track'] = field(default_factory=dict)
+    tracks: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    def add_track(self, url: str, status: TrackSyncStatus, title: str, filename: str = '', playlist_index: int | None = None,
+                  permanently_downloaded: bool = False, metadata_status: MetadataStatus = MetadataStatus.NEW,
+                  occurrence_index: int = 1):
+        new_track = pd.DataFrame({
+            'url': url,
+            'status': status,
+            'title': title,
+            'filename': filename,
+            'playlist_index': playlist_index,
+            'permanently_downloaded': permanently_downloaded,
+            'metadata_status': metadata_status,
+            'occurrence_index': occurrence_index,
+            'collection_url': self
+        }, index=[0])
+
+        self.tracks = pd.concat([self.tracks, new_track], ignore_index=True).sort_values('playlist_index')
+
+    def update_track(self, track, **kwargs):
+        for k, v in kwargs.items():
+            self.tracks.loc[track.Index, k] = v
+
 
     @classmethod
     def from_xml(cls, el: Element) -> 'CollectionUrl':
-        tracks = {}
+        track_series: list[pd.Series] = []
         for child in el:
             if child.tag == 'Track':
-                track = Track.from_xml(child)
-                tracks[track.url] = track
+                track = cls.track_from_xml(child)
+                track_series.append(track)
 
         attrib: dict[str, Any] = el.attrib.copy()
 
@@ -433,7 +477,11 @@ class CollectionUrl(XmlObject):
         else:
             attrib['is_playlist'] = attrib.get('is_playlist') == 'True'
 
-        return cls(**attrib, tracks=tracks)
+        new_collection_url = cls(**attrib)
+        tracks = pd.DataFrame(track_series)
+        tracks['collection_url'] = new_collection_url
+        new_collection_url.tracks = tracks
+        return new_collection_url
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
@@ -443,37 +491,48 @@ class CollectionUrl(XmlObject):
             attrs[string_var] = str(attrs[string_var])
 
         el = et.Element('CollectionUrl', **attrs)
-        for track in self.tracks.values():
-            el.append(track.to_xml())
+        for index, track in self.tracks.iterrows():
+            el.append(self.track_to_xml(track))
         return el
+
+    @staticmethod
+    def track_from_xml(el: Element) -> pd.Series:
+        """
+        A track Series has to have all attributes defined in Track
+        """
+        attrib: dict[str, Any] = el.attrib.copy()
+        attrib.setdefault('permanently_downloaded', False)
+        attrib.setdefault('metadata_status', MetadataStatus.NEW)
+        attrib.setdefault('occurrence_index', 1)
+
+        attrib['status'] = TrackSyncStatus(attrib['status'])
+        if isinstance(attrib['metadata_status'], str):
+            attrib['metadata_status'] = MetadataStatus(attrib['metadata_status'])
+        if isinstance(attrib['permanently_downloaded'], str):
+            attrib['permanently_downloaded'] = attrib['permanently_downloaded'] == 'True'
+        if isinstance(attrib['occurrence_index'], str):
+            attrib['occurrence_index'] = int(attrib['occurrence_index'])
+
+        return pd.Series(attrib)
+
+    @staticmethod
+    def track_to_xml(track: pd.Series) -> Element:
+        attrs = track.to_dict()
+        attrs.pop('collection_url')
+        attrs['permanently_downloaded'] = str(attrs['permanently_downloaded'])
+        return Element('Track', **attrs)
 
     def __hash__(self):
         return hash(id(self))
 
-
-@dataclass
-class Track(XmlObject):
-    url: str
-    status: TrackSyncStatus
-    title: str
-    filename: str = ''
-    playlist_index: str = ''
-    permanently_downloaded: bool = False
-    metadata_status: MetadataStatus = MetadataStatus.NEW
-
-    @classmethod
-    def from_xml(cls, el: Element) -> 'Track':
-        attrib: dict[str, Any] = el.attrib.copy()
-        attrib['status'] = TrackSyncStatus(attrib['status'])
-        attrib['metadata_status'] = MetadataStatus(attrib['metadata_status'])
-        attrib['permanently_downloaded'] = attrib['permanently_downloaded'] == 'True'
-
-        return cls(**attrib)
-
-    def to_xml(self) -> Element:
+    def __eq__(self, other: 'CollectionUrl'):
         attrs = vars(self).copy()
-        attrs['permanently_downloaded'] = str(self.permanently_downloaded)
-        return et.Element('Track', **attrs)
+        attrs.pop('tracks')
+
+        other_attrs = vars(other).copy()
+        other_attrs.pop('tracks')
+
+        return attrs == other_attrs and (self.tracks == other.tracks).all(axis=None)
 
 
 if __name__ == '__main__':
