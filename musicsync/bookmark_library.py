@@ -50,18 +50,18 @@ class BookmarkLibrary:
         return cursor
 
 class FirefoxLibrary(BookmarkLibrary):
-    @staticmethod
-    def from_path(path) -> 'FirefoxLibrary':
+    @classmethod
+    def from_path(cls, path) -> 'FirefoxLibrary':
         if not os.path.isfile(path):
             raise FileNotFoundError(f'File {path} not found')
         connection = sqlite3.connect(path)
-        bookmarks = pd.read_sql('SELECT b.id AS id, b.type AS type, b.parent AS parent, '
+        bookmarks = pd.read_sql('SELECT b.id AS id, b.type AS type, b.parent AS parent, b.position AS position, '
                                 'b.title AS bookmark_title, p.url AS url, p.title AS page_title FROM moz_bookmarks AS b '
                                 'LEFT JOIN moz_places AS p ON b.fk=p.id', connection, index_col='id')
 
         folders: dict[int, BookmarkFolder] = {}
-        library = FirefoxLibrary()
-        for row in bookmarks.sort_values('parent').itertuples():
+        library = cls()
+        for row in bookmarks.sort_values(['parent', 'position']).itertuples():
             parent = folders[row.parent] if row.parent != 0 else library
 
             if row.type == 1:
@@ -78,3 +78,6 @@ class FirefoxLibrary(BookmarkLibrary):
                 library.children = {new_entry.id: new_entry}
 
         return library
+
+if __name__ == '__main__':
+    collection = BookmarkLibrary().create_from_path('/home/robin/.mozilla/firefox/dpv2usmq.default-release/places.sqlite')
