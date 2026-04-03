@@ -504,6 +504,7 @@ class CollectionUrl(XmlObject):
         attrib.setdefault('permanently_downloaded', False)
         attrib.setdefault('metadata_status', MetadataStatus.NEW)
         attrib.setdefault('occurrence_index', 1)
+        attrib.setdefault('playlist_index', None)
 
         attrib['status'] = TrackSyncStatus(attrib['status'])
         if isinstance(attrib['metadata_status'], str):
@@ -520,6 +521,12 @@ class CollectionUrl(XmlObject):
         attrs = track.to_dict()
         attrs.pop('collection_url')
         attrs['permanently_downloaded'] = str(attrs['permanently_downloaded'])
+        attrs['occurrence_index'] = str(attrs['occurrence_index'])
+        if attrs['playlist_index'] is None:
+            attrs.pop('playlist_index')
+        else:
+            attrs['playlist_index'] = str(attrs['playlist_index'])
+
         return Element('Track', **attrs)
 
     def __hash__(self):
