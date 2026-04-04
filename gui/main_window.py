@@ -16,8 +16,8 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem, QHeaderView, )
 
-from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, CollectionUrl, \
-    Collection, Script, PathComponent, ScriptReference
+from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, Collection, Script, PathComponent, \
+    ScriptReference
 from musicsync.scripting.script_types import MetadataSuggestionsScript, DownloadScript
 from .bookmark_dialog import BookmarkDialog
 from .main_gui import Ui_MainWindow
@@ -325,12 +325,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selected_collection: CollectionItem = extra['selected_collection']
         selected_collection_xml: Collection = extra['selected_collection_xml']
 
-        print(result)
-
         if not isinstance(result, Exception):
+            print(result[['url', 'occurrence_index']])
+
             if selected_collection_xml.sync_bookmark_file:
                 selected_collection.update_children(selected_collection_xml)
 
+            selected_collection.downloader = selected_collection_xml.downloader
             selected_collection.compare_result = result
 
             self.update_tables()
@@ -349,6 +350,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def sync_collection(self):
         selected_collection = self.get_selected_collection()
+        assert selected_collection is not None  # make ide happy
+
         selected_collection_xml = selected_collection.to_xml_object()
 
         selected_collection.syncing = True

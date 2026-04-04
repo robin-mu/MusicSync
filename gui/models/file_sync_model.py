@@ -22,8 +22,8 @@ class FileSyncModelColumn(IntEnum):
 
     # internal columns
     COLLECTION_URL = 6
-    TRACK_URL = 7
-    TRACK_OCCURRENCE_INDEX = 8
+    URL = 7
+    OCCURRENCE_INDEX = 8
 
 
     def __str__(self):
@@ -59,10 +59,10 @@ class FileSyncModelColumn(IntEnum):
             return 'collection_url'
         elif self == FileSyncModelColumn.PLAYLIST_INDEX:
             return 'playlist_index'
-        elif self == FileSyncModelColumn.TRACK_URL:
-            return 'track_url'
-        elif self == FileSyncModelColumn.TRACK_OCCURRENCE_INDEX:
-            return 'track_occurrence_index'
+        elif self == FileSyncModelColumn.URL:
+            return 'url'
+        elif self == FileSyncModelColumn.OCCURRENCE_INDEX:
+            return 'occurrence_index'
         return None
 
 
@@ -80,8 +80,8 @@ class FileSyncModel(DataFrameTableModel):
         super().__init__(df, parent)
 
     def internal_columns(self) -> int:
-        return len([FileSyncModelColumn.COLLECTION_URL, FileSyncModelColumn.TRACK_URL,
-                    FileSyncModelColumn.TRACK_OCCURRENCE_INDEX])
+        return len([FileSyncModelColumn.COLLECTION_URL, FileSyncModelColumn.URL,
+                    FileSyncModelColumn.OCCURRENCE_INDEX])
 
     def delegate_columns(self) -> list[int]:
         return [FileSyncModelColumn.ACTION]

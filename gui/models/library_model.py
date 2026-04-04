@@ -160,6 +160,8 @@ class CollectionItem(XmlObjectModelItem):
         self.excluded_yt_dlp_fields = kwargs.get('excluded_yt_dlp_fields', Collection.DEFAULT_EXCLUDED_YT_DLP_FIELDS)
         self.yt_dlp_options = kwargs.get('yt_dlp_options', '')
 
+        self.downloader = kwargs.get('downloader', None)
+
         self.comparing: bool = False
         self.syncing: bool = False
         self.sync_progress: float = 0

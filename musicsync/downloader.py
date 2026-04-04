@@ -53,7 +53,7 @@ class MusicSyncPreProcessor(PostProcessor):
         super().__init__(downloader)
 
     def run(self, info):
-        print(info)
+        #print(info)
         if self._downloader.current_url.concat and info.get('_type') == 'playlist':
             print('playlist')
             info['_type'] = 'multi_video'
@@ -204,7 +204,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                 videos = pd.DataFrame({
                     'url': [e['url'] for e in entries],
                     'title': [e['title'] for e in entries],
-                    'playlist_index': list(range(1, len(entries) + 1))
+                    'playlist_index': list(range(1, len(entries) + 1)),
+                    'occurrence_index': 1,
                 })
 
                 # count number of occurrences of every url
@@ -221,6 +222,7 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
                     'playlist_index': None,
                     'occurrence_index': 1,
                 }, index=[0])
+
 
             logger.debug(f'Processing URL {collection_url.url} ({collection_url.name})')
             logger.debug(f'Playlist: {"yes" if collection_url.is_playlist else "no"}')
@@ -307,18 +309,20 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         """
         Changes the linked collection in-place, depending on the given ``info_df``.
         :param info_df: Info DataFrame. Has to contain the following columns:
-            collection_url: The CollectionUrl object
-            action: The selected TrackSyncAction for this track
+            collection_url: The ``CollectionUrl`` object
+            url: The video URL
+            occurrence_index: The video occurrence index in that Collection URL
+            action: The selected TrackSyncAction for this video
 
         This function
 
         - Changes the status of all tracks with an action of ``KEEP_PERMANENTLY`` to ``PERMANENTLY_DOWNLOADED``
         - Changes the status of all tracks with an action of ``REMOVE_FROM_PERMANENTLY_DOWNLOADED`` to ``DOWNLOADED``
-        - Deletes all files and removes the ``Track`` object from the ``CollectionUrl`` for all tracks with an action of ``DELETE``
+        - Deletes all files and removes the Track object from the ``CollectionUrl`` for all tracks with an action of ``DELETE``
         - Downloads all tracks with an action of ``DOWNLOAD`` and
             - adds playlist information to the ``Track`` object
 
-        :return: A dataframe containing all not excluded metadata from all downloaded tracks.
+        :return: A dataframe containing all metadata from all downloaded tracks.
         """
 
         logger = self.logger
@@ -332,11 +336,11 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             logger.debug(f'KEEP_PERMANENTLY: {len(keep_permanently)} tracks.')
             logger.indent()
 
-        for track in keep_permanently['track']:
-            track.status = lib.TrackSyncStatus.PERMANENTLY_DOWNLOADED
-            track.permanently_downloaded = True
+        for collection_url in keep_permanently['collection_url'].unique():
+            modified = collection_url.update_tracks(keep_permanently, status=lib.TrackSyncStatus.PERMANENTLY_DOWNLOADED)
 
-            logger.debug(f'{track.url} ({track.filename}) marked as {track.status}')
+            for track in modified.itertuples():
+                logger.debug(f'{track.url} ({track.filename}) marked as {track.status}')
 
         logger.reset_indent()
 
@@ -348,42 +352,43 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             logger.debug(f'REMOVE_FROM_PERMANENTLY_DOWNLOADED: {len(remove_from_permanently_downloaded)} tracks.')
             logger.indent()
 
-        for track in remove_from_permanently_downloaded['track']:
-            track.status = lib.TrackSyncStatus.DOWNLOADED
-            track.permanently_downloaded = False
+        for collection_url in remove_from_permanently_downloaded['collection_url'].unique():
+            modified = collection_url.update_tracks(remove_from_permanently_downloaded,
+                                                    status=lib.TrackSyncStatus.DOWNLOADED)
 
-            logger.debug(f'{track.url} ({track.filename}) marked as {track.status}')
-
-        logger.reset_indent()
-
-        # 3. DELETE: delete files
-        delete = info_df[info_df['action'] == lib.TrackSyncAction.DELETE]
-
-        if len(delete) > 0:
-            logger.info(f'DELETE: {len(delete)} tracks.')
-            logger.indent()
-            self.params['logger'].indent(2)
-
-        for row in delete[['track', 'collection_url']].itertuples():
-            track = row.track
-            url: lib.CollectionUrl = cast(lib.CollectionUrl, cast(object, row.collection_url))
-            path = self.collection.get_real_path(url, track)
-
-            if os.path.isfile(path):
-                os.remove(path)
-                logger.info(f'Deleting {track.filename} ({track.url})')
-            else:
-                logger.info(f'Could not delete file {track.filename} ({track.url}) because it does not exist')
-
-            url.tracks.pop(track.url)
+            for track in modified.itertuples():
+                logger.debug(f'{track.url} ({track.filename}) marked as {track.status}')
 
         logger.reset_indent()
+
+        # # 3. DELETE: delete files
+        # delete = info_df[info_df['action'] == lib.TrackSyncAction.DELETE]
+        #
+        # if len(delete) > 0:
+        #     logger.info(f'DELETE: {len(delete)} tracks.')
+        #     logger.indent()
+        #     self.params['logger'].indent(2)
+        #
+        # for row in delete[['track', 'collection_url']].itertuples():
+        #     track = row.track
+        #     url: lib.CollectionUrl = cast(lib.CollectionUrl, cast(object, row.collection_url))
+        #     path = self.collection.get_real_path(url, track)
+        #
+        #     if os.path.isfile(path):
+        #         os.remove(path)
+        #         logger.info(f'Deleting {track.filename} ({track.url})')
+        #     else:
+        #         logger.info(f'Could not delete file {track.filename} ({track.url}) because it does not exist')
+        #
+        #     url.tracks.pop(track.url)
+        #
+        # logger.reset_indent()
 
         # 4. REDOWNLOAD_METADATA and DOWNLOAD
-        def filter_redownloaded(info_dict, url: lib.CollectionUrl, entries_df: pd.DataFrame) -> str | None:
+        def filter_redownloaded(info_dict, url: lib.CollectionUrl, actions_df: pd.DataFrame) -> str | None:
             info_dicts.append(info_dict)
 
-            if entries_df.loc[str(info_dict.get('playlist_index', '')), 'action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA:
+            if actions_df.loc[str(info_dict.get('playlist_index', '')), 'action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA:
                 return "Skipping download since sync action is set to REDOWNLOAD_METADATA"
 
             return None
@@ -396,31 +401,33 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             logger.indent()
             self.params['logger'].indent(2)
 
-        groupby_url = download.groupby('collection_url')
-
         info_dicts = []
-        for url in groupby_url.groups:
-            self.current_url = url
+        print(self.collection.urls)
+        print(download['collection_url'].unique().tolist())
+        for collection_url in download['collection_url'].unique():
+            self.current_url = collection_url
+            print(download[download['collection_url'].apply(lambda x: x is collection_url)][['url', 'occurrence_index']])
 
-            group = groupby_url.get_group(url)
-            entries = pd.DataFrame({'track': group['track'], 'action': group['action']})
-            entries.index = pd.Index(group['track'].apply(lambda t: t.playlist_index), name='playlist_index')
+            tracks = collection_url.get_tracks(download)
+            actions = pd.DataFrame({'action': tracks['action']})
+            actions.index = pd.Index(tracks['playlist_index'], name='playlist_index')
 
-            if url.is_playlist:
-                self.params['playlist_items'] = ','.join(entries.index.tolist())
+            if collection_url.is_playlist:
+                self.params['playlist_items'] = ','.join(actions.index.tolist())
 
-            self.params['match_filter'] = partial(filter_redownloaded, url=url, entries_df=entries)
+            self.params['match_filter'] = partial(filter_redownloaded, url=collection_url, actions_df=actions)
 
-            print(self.partial_ie_results)
-            if url.url in self.partial_ie_results:
-                logger.debug(f'Processing IE result for URL {url.url}')
-                info = self.process_ie_result(self.partial_ie_results[url.url])
-                self.partial_ie_results.pop(url.url)
+            if collection_url.url in self.partial_ie_results:
+                logger.debug(f'Processing IE result for URL {collection_url.url}')
+                info = self.process_ie_result(self.partial_ie_results[collection_url.url])
+                self.partial_ie_results.pop(collection_url.url)
             else:
-                logger.debug(f'Extracting URL {url.url}')
-                info = self.extract_info(url.url)
+                logger.debug(f'Extracting URL {collection_url.url}')
+                info = self.extract_info(collection_url.url)
 
             info_dicts.append(info)
+
+            # TODO: add tracks from info_df to collection url tracks
 
         metadata_df = pd.DataFrame.from_records(info_dicts)
         metadata_df.to_csv('test.csv')
