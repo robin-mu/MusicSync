@@ -102,6 +102,7 @@ class MetadataStatus(GuiStrEnum):
 
 @dataclass
 class MusicSyncLibrary:
+    path: str = ''
     scripts: set['Script'] = field(default_factory=set)
     metadata_table: pd.DataFrame = field(default_factory=pd.DataFrame)
     children: list[Union['Folder', 'Collection']] = field(default_factory=list)
@@ -136,7 +137,7 @@ class MusicSyncLibrary:
         csv_path = xml_path[:-4] + '.csv'
         metadata_table = pd.read_csv(csv_path) if os.path.isfile(csv_path) else pd.DataFrame()
 
-        return MusicSyncLibrary(children=children, scripts=scripts, metadata_table=metadata_table)
+        return MusicSyncLibrary(path=xml_path, children=children, scripts=scripts, metadata_table=metadata_table)
 
     def write_xml(self, xml_path: str):
         if xml_path.endswith('.pkl'):
@@ -185,19 +186,6 @@ class Folder(XmlObject):
         for child in self.children:
             el.append(child.to_xml())
         return el
-
-
-@dataclass
-class FileTag(XmlObject):
-    name: str
-    format: str = ''
-
-    @classmethod
-    def from_xml(cls, el: Element) -> 'FileTag':
-        return cls(**el.attrib)
-
-    def to_xml(self) -> Element:
-        return et.Element('FileTag', **vars(self))
 
 
 PathComponent = namedtuple('PathComponent', ['id', 'name'])
@@ -294,7 +282,7 @@ class Collection(XmlObject):
 
     script_settings: list[ScriptReference] = field(default_factory=list)
 
-    _urls: list['CollectionUrl'] = field(default_factory=list)
+    urls: list['CollectionUrl'] = field(default_factory=list)
 
     downloader: 'dl.MusicSyncDownloader | None' = None
 
@@ -362,7 +350,7 @@ class Collection(XmlObject):
         return el
 
     def add_url(self, url, name, *args, **kwargs):
-        self._urls.append(CollectionUrl(url=url, name=name, concat=self.auto_concat_urls, save_to_subfolder=self.save_playlists_to_subfolders, *args, **kwargs))
+        self.urls.append(CollectionUrl(url=url, name=name, concat=self.auto_concat_urls, save_to_subfolder=self.save_playlists_to_subfolders, *args, **kwargs))
 
     def bookmark_sync(self, bookmarks: list[Bookmark]) -> tuple[list, list]:
         occurrences = {}
@@ -374,21 +362,17 @@ class Collection(XmlObject):
             local_urls[(url.url, occurrences[url.url])] = url
 
         occurrences = {}
-        self._urls = []
+        self.urls = []
         added_urls = []
         for bookmark in bookmarks:
             occurrences[bookmark.url] = occurrences.get(bookmark.url, 0) + 1
             if (bookmark.url, occurrences[bookmark.url]) in local_urls:
-                self._urls.append(local_urls.pop((bookmark.url, occurrences[bookmark.url])))
+                self.urls.append(local_urls.pop((bookmark.url, occurrences[bookmark.url])))
             else:
                 self.add_url(url=bookmark.url, name=bookmark.bookmark_title if self.sync_bookmark_title_as_url_name else '')
                 added_urls.append((bookmark.url, bookmark.bookmark_title))
 
         return added_urls, list(local_urls.values())
-
-    @property
-    def urls(self) -> list[CollectionUrl]:
-        return self._urls
 
     def compare(self, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> pd.DataFrame | Exception:
         self.downloader = dl.MusicSyncDownloader(self)

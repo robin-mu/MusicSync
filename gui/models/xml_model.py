@@ -6,6 +6,7 @@ from PySide6 import QtCore
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from musicsync.xml_object import XmlObject
+from utils import classproperty
 
 QStandardItemMeta = type(QStandardItem)
 class _ABCQStandardItemMeta(QStandardItemMeta, ABCMeta):
@@ -16,16 +17,21 @@ class _ABCQStandardItemModelMeta(QStandardItemModelMeta, ABCMeta):
     pass
 
 class XmlObjectModelItem(QStandardItem, ABC, metaclass=_ABCQStandardItemMeta):
-    def __init__(self):
+    def __init__(self, xml_object: XmlObject | None = None, **kwargs):
         super().__init__()
 
     @abstractmethod
-    def to_xml_object(self) -> 'XmlObject':
+    def push_to_xml_object(self) -> None:
+        """
+        Update the linked XML object with changes made to the item
+        """
         pass
 
-    @staticmethod
     @abstractmethod
-    def from_xml_object(xml_object: 'XmlObject') -> 'XmlObjectModelItem':
+    def pull_from_xml_object(self) -> None:
+        """
+        Update this item with changed made to the linked XML object
+        """
         pass
 
 

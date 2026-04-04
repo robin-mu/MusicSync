@@ -329,7 +329,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             print(result[['url', 'occurrence_index']])
 
             if selected_collection_xml.sync_bookmark_file:
-                selected_collection.update_children(selected_collection_xml)
+                selected_collection.update_children(selected_collection_xml)  # probably pull_from_xml_object
 
             selected_collection.downloader = selected_collection_xml.downloader
             selected_collection.compare_result = result
