@@ -34,7 +34,7 @@ class ScriptItem(QStandardItem):
 
 
 class ScriptsModel(QStandardItemModel):
-    def __init__(self, scripts: set[Script]=None, window=None):
+    def __init__(self, scripts: set[Script], window=None):
         super(ScriptsModel, self).__init__()
 
         self.window = window

@@ -1,12 +1,11 @@
+import xml.etree.ElementTree as et
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import auto
-from typing import ClassVar
-import xml.etree.ElementTree as et
 from xml.etree.ElementTree import Element
 
-from musicsync.xml_object import XmlObject
 from musicsync.utils import GuiStrEnum
+from musicsync.xml_object import XmlObject
 
 
 class ScriptType(GuiStrEnum):
@@ -29,7 +28,10 @@ class Script(XmlObject):
     script: str = ''
 
     enabled: bool = field(default=False, compare=False, repr=False)
-    script_type: ClassVar[ScriptType | None] = None
+
+    @property
+    def script_type(self) -> ScriptType:
+        return ScriptType(self.__class__.__name__)
 
     @classmethod
     def from_xml(cls, el: Element) -> 'XmlObject':
@@ -44,7 +46,7 @@ class Script(XmlObject):
         attrs.pop('script')
         self.update_xml_attrs(attrs)
 
-        el = et.Element(self.__class__.__name__, attrib=attrs)
+        el = et.Element(self.script_type, attrib=attrs)
         for line in self.script.split('\n'):
             line = line.replace('\t', ' ' * 10)
             indent = len(line) - len(line.lstrip(' '))
@@ -71,8 +73,6 @@ class MetadataSuggestionsScript(Script):
     default_remove_brackets: bool = False
     local_field: bool = False
     overwrite_metadata_table: bool = False
-
-    script_type: ClassVar[ScriptType] = ScriptType.METADATA_SUGGESTIONS
 
     def __post_init__(self):
         if isinstance(self.timed_data, str):
@@ -111,8 +111,6 @@ class DownloadScriptWhen(GuiStrEnum):
 @dataclass
 class DownloadScript(Script):
     when: DownloadScriptWhen = DownloadScriptWhen.POST_PROCESS
-
-    script_type: ClassVar[ScriptType] = ScriptType.DOWNLOAD
 
     def __post_init__(self):
         if isinstance(self.when, str):

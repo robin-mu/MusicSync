@@ -109,15 +109,19 @@ class MusicSyncLibrary:
 
     @classmethod
     def read_pickle(cls, path: str):
+        if path.endswith('.xml'):
+            path = path[:-4] + '.pkl'
         with open(path, 'rb') as f:
             return pickle.load(f)
 
     def write_pickle(self, path: str):
+        if path.endswith('.xml'):
+            path = path[:-4] + '.pkl'
         with open(path, 'wb') as f:
             pickle.dump(self, f)
 
-    @staticmethod
-    def read_xml(xml_path: str) -> 'MusicSyncLibrary':
+    @classmethod
+    def read_xml(cls, xml_path: str) -> 'MusicSyncLibrary':
         if xml_path.endswith('.pkl'):
             xml_path = xml_path[:-4] + '.xml'
 
@@ -137,7 +141,7 @@ class MusicSyncLibrary:
         csv_path = xml_path[:-4] + '.csv'
         metadata_table = pd.read_csv(csv_path) if os.path.isfile(csv_path) else pd.DataFrame()
 
-        return MusicSyncLibrary(path=xml_path, children=children, scripts=scripts, metadata_table=metadata_table)
+        return cls(path=xml_path, children=children, scripts=scripts, metadata_table=metadata_table)
 
     def write_xml(self, xml_path: str):
         if xml_path.endswith('.pkl'):
@@ -160,7 +164,7 @@ class MusicSyncLibrary:
             self.metadata_table.to_csv(xml_path[:-4] + '.csv')
 
     def __eq__(self, other: MusicSyncLibrary):
-        return self.scripts == other.scripts and self.children == other.children and (self.metadata_table == other.metadata_table).all().all()
+        return self.scripts == other.scripts and self.children == other.children and (self.metadata_table == other.metadata_table).all(axis=None)
 
 @dataclass
 class Folder(XmlObject):
@@ -289,7 +293,7 @@ class Collection(XmlObject):
     @classmethod
     def from_xml(cls, el: Element) -> 'Collection':
         kwargs: dict[str, Any] = el.attrib.copy()
-        kwargs['_urls'] = []
+        kwargs['urls'] = []
 
         for bool_var in ('save_playlists_to_subfolders', 'sync_bookmark_title_as_url_name', 'sync_delete_files',
                          'exclude_after_download', 'auto_concat_urls'):
@@ -306,7 +310,7 @@ class Collection(XmlObject):
             elif child.tag == 'SyncActions':
                 kwargs['sync_actions'] = {TrackSyncStatus(k): TrackSyncAction(v) for k, v in child.attrib.items()}
             elif child.tag == 'CollectionUrl':
-                kwargs['_urls'].append(CollectionUrl.from_xml(child))
+                kwargs['urls'].append(CollectionUrl.from_xml(child))
             elif child.tag == 'ScriptSettings':
                 kwargs['script_settings'] = []
                 for ref in child:
@@ -317,7 +321,7 @@ class Collection(XmlObject):
 
     def to_xml(self) -> Element:
         attrs = vars(self).copy()
-        for pop_var in ('_urls', 'sync_bookmark_file', 'sync_bookmark_path', 'sync_bookmark_title_as_url_name',
+        for pop_var in ('urls', 'sync_bookmark_file', 'sync_bookmark_path', 'sync_bookmark_title_as_url_name',
                         'sync_delete_files', 'sync_actions', 'script_settings', 'downloader', 'excluded_yt_dlp_fields'):
             attrs.pop(pop_var)
 
@@ -553,7 +557,7 @@ class CollectionUrl(XmlObject):
         other_attrs = vars(other).copy()
         other_attrs.pop('tracks')
 
-        return attrs == other_attrs and (self.tracks == other.tracks).all(axis=None)
+        return attrs == other_attrs and (self.tracks.drop(columns=['collection_url']) == other.tracks.drop(columns=['collection_url'])).all(axis=None)
 
 
 if __name__ == '__main__':

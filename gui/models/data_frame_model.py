@@ -33,10 +33,10 @@ class DataFrameTableModel(QAbstractTableModel):
     def display_data(self, value) -> str:
         return str(value)
 
-    def rowCount(self, parent: QModelIndex = ...) -> int:
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return len(self.df)
 
-    def columnCount(self, parent: QModelIndex = ...) -> int:
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return len(self.df.columns) - self.internal_columns()
 
     def data(self, index, /, role=QtCore.Qt.ItemDataRole.DisplayRole):
