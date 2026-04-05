@@ -14,7 +14,6 @@ class LibraryModel(XmlObjectModel):
     def __init__(self, path: str=None):
         super(LibraryModel, self).__init__()
 
-        self.root = self.invisibleRootItem()
         self.saved_library_object: MusicSyncLibrary | None = None
         self.library_object: MusicSyncLibrary | None = None
 
@@ -56,46 +55,22 @@ class LibraryModel(XmlObjectModel):
 
     # different name because children already is an attribute of QObject
     @property
-    def library_children(self) -> list[Union['Folder', 'Collection']]:
+    def children_library(self) -> list[Union['Folder', 'Collection']]:
         assert self.library_object is not None
 
         self.push_to_xml_object()
         return self.library_object.children
 
-    @library_children.setter
-    def library_children(self, value: list[Union['Folder', 'Collection']]):
+    @children_library.setter
+    def children_library(self, value: list[Union['Folder', 'Collection']]):
         assert self.library_object is not None
 
         self.library_object.children = value
         self.pull_from_xml_object()
 
-    @staticmethod
-    def item_from_xml(el: Element) -> XmlObjectModelItem:
-        if el.tag == 'Folder':
-            return FolderItem(Folder.from_xml(el))
-        elif el.tag == 'Collection':
-            return CollectionItem(Collection.from_xml(el))
-        elif el.tag == 'CollectionUrl':
-            return CollectionUrlItem(CollectionUrl.from_xml(el))
-
-        raise ValueError(f'Unknown tag {el.tag}')
-
-    @staticmethod
-    def validate_drop(parent_item: XmlObjectModelItem | None, item: XmlObjectModelItem) -> bool:
-        if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
-            return False
-
-        if isinstance(parent_item, CollectionItem) and (isinstance(item, (CollectionItem, FolderItem))):
-            return False
-
-        if isinstance(parent_item, CollectionUrlItem):
-            return False
-
-        return True
-
     def push_to_xml_object(self):
         children = []
-        for i in range(self.root.rowCount()):
+        for i in range(self.root.row_count()):
             row = cast(XmlObjectModelItem, self.root.child(i))
             row.push_to_xml_object()
             children.append(row.xml_object)
@@ -109,9 +84,9 @@ class LibraryModel(XmlObjectModel):
 
         for child in self.library_object.children:
             if isinstance(child, Folder):
-                self.root.appendRow(FolderItem(child))
+                self.root.append_child(FolderItem(child))
             elif isinstance(child, Collection):
-                self.root.appendRow(CollectionItem(child))
+                self.root.append_child(CollectionItem(child))
 
     def to_xml(self, filename: str | None=None):
         if filename is None:
@@ -134,7 +109,7 @@ class LibraryModel(XmlObjectModel):
         self.saved_library_object = MusicSyncLibrary.read_pickle(filename)
 
     def has_changed(self):
-        if self.root.rowCount() == 0:
+        if self.root.row_count() == 0:
             return False
 
         if self.saved_library_object is None:
