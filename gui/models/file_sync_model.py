@@ -5,11 +5,10 @@ from PySide6 import QtCore
 from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QComboBox
 
-from .library_model import CollectionItem
+from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus
 from .data_frame_model import DataFrameTableModel
 from .item_delegates import ComboBoxDelegate
-
-from musicsync.music_sync_library import Collection, TrackSyncAction, TrackSyncStatus
+from .library_model import CollectionItem
 
 
 class FileSyncModelColumn(IntEnum):
@@ -69,13 +68,13 @@ class FileSyncModelColumn(IntEnum):
 class FileSyncModel(DataFrameTableModel):
     def __init__(self, collection_item: CollectionItem, parent):
         if collection_item.compare_result is None:
-            df = FileSyncModel.collection_to_df(collection_item.to_xml_object())
+            df = FileSyncModel.urls_to_df(collection_item)
             df.sort_values(by='status',
                            inplace=True,
                            kind='mergesort',
                            key=lambda col: col.apply(lambda s: s.sort_key))
         else:
-            df = FileSyncModel.process_compare_result(collection_item)
+            df = FileSyncModel.compare_result_to_df(collection_item)
 
         super().__init__(df, parent)
 
@@ -102,18 +101,18 @@ class FileSyncModel(DataFrameTableModel):
         return super().display_data(value)
 
     @staticmethod
-    def collection_to_df(collection: Collection) -> pd.DataFrame:
+    def urls_to_df(collection_item: CollectionItem) -> pd.DataFrame:
         columns = [c.df_column_name for c in FileSyncModelColumn.__members__.values()]
 
         df = pd.DataFrame(columns=columns)
-        for url in collection.urls:
+        for url in collection_item.urls:
             url_df = pd.DataFrame.from_records([dict(zip(columns, [
                 url.name,
                 track.playlist_index,
                 track.title,
                 track.filename,
                 track.status,
-                collection.sync_actions[track.status],
+                collection_item.sync_actions[track.status],
                 url,
                 track.url,
                 track.occurrence_index
@@ -124,9 +123,9 @@ class FileSyncModel(DataFrameTableModel):
         return df
 
     @staticmethod
-    def process_compare_result(collection_item: CollectionItem) -> pd.DataFrame:
+    def compare_result_to_df(collection_item: CollectionItem) -> pd.DataFrame:
         compare_result = collection_item.compare_result
-        assert compare_result is not None  # make PyCharm happy
+        assert compare_result is not None  # make ide happy
 
         columns = [c.df_column_name for c in FileSyncModelColumn.__members__.values()]
 

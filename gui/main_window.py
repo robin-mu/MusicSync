@@ -4,7 +4,7 @@ from typing import cast
 
 import pandas as pd
 from PySide6 import QtWidgets
-from PySide6.QtCore import QEvent, QItemSelection, Qt, QThread, QItemSelectionModel, QSignalBlocker
+from PySide6.QtCore import QEvent, QItemSelection, Qt, QThread, QItemSelectionModel, QSignalBlocker, QPoint
 from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QDialogButtonBox,
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem, QHeaderView, )
 
-from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, Collection, Script, PathComponent, \
+from musicsync.music_sync_library import TrackSyncAction, TrackSyncStatus, Script, PathComponent, \
     ScriptReference
 from musicsync.scripting.script_types import MetadataSuggestionsScript, DownloadScript
 from .bookmark_dialog import BookmarkDialog
@@ -128,7 +128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             elif answer == QMessageBox.StandardButton.Cancel:
                 return
 
-        filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="XML files (*.xml) (*.xml)")
+        filename, ok = QFileDialog.getOpenFileName(self, 'Select a file to load', filter="Pickle files (*.pkl) (*.pkl)")
         if filename:
             self.library_tree_view.setModel(LibraryModel(filename))
             self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
@@ -146,7 +146,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return self.save_library_as()
 
     def save_library_as(self):
-        filename, ok = QFileDialog.getSaveFileName(self, 'Select a file to save to', filter="XML files (*.xml) (*.xml)")
+        filename, ok = QFileDialog.getSaveFileName(self, 'Select a file to save to', filter="Pickle files (*.pkl) (*.pkl)")
         if filename:
             if not filename.endswith('.pkl'):
                 filename += '.pkl'
@@ -234,11 +234,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def save_settings(self, item: CollectionItem | None = None):
         if item is None:
-            item = self.library_tree_view.model().itemFromIndex(self.library_tree_view.currentIndex())
-        if item is None or isinstance(item, FolderItem):
+            item = self.get_selected_collection()
+        if item is None:
             return
-        if isinstance(item, CollectionUrlItem):
-            item = item.parent()
 
         item.folder_path = self.settings_folder_path.text()
         item.filename_format = self.settings_filename_format.text()
@@ -269,7 +267,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         }
 
         item.script_settings = [ScriptReference(it.script.name, it.checkState() == Qt.CheckState.Checked, it.row()) for it in self.scripts_table.model().items]
-        # item.file_tags = deepcopy(self.tag_settings_table.model().tags)
 
         self.save_script()
         self.library_tree_view.model().scripts = deepcopy(self.scripts_table.model().scripts)
@@ -295,14 +292,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     # -------------
     def compare_collection(self):
         selected_collection = self.get_selected_collection()
-        selected_collection_xml = selected_collection.to_xml_object()
+        assert selected_collection is not None
 
         selected_collection.comparing = True
 
         thread = QThread()
-        worker = ThreadingWorker(selected_collection_xml.compare,
-                                 extra={'selected_collection': selected_collection,
-                                        'selected_collection_xml': selected_collection_xml})
+        worker = ThreadingWorker(selected_collection.compare,
+                                 extra={'selected_collection': selected_collection})
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.result.connect(thread.quit)
@@ -323,15 +319,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def compare_finished(self, result, extra):
         selected_collection: CollectionItem = extra['selected_collection']
-        selected_collection_xml: Collection = extra['selected_collection_xml']
 
         if not isinstance(result, Exception):
             print(result[['url', 'occurrence_index']])
 
-            if selected_collection_xml.sync_bookmark_file:
-                selected_collection.update_children(selected_collection_xml)  # probably pull_from_xml_object
-
-            selected_collection.downloader = selected_collection_xml.downloader
             selected_collection.compare_result = result
 
             self.update_tables()
@@ -352,15 +343,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selected_collection = self.get_selected_collection()
         assert selected_collection is not None  # make ide happy
 
-        selected_collection_xml = selected_collection.to_xml_object()
-
         selected_collection.syncing = True
 
         thread = QThread()
-        worker = ThreadingWorker(selected_collection_xml.sync,
+        worker = ThreadingWorker(selected_collection.sync,
                                  self.sync_status_table.model().df,
-                                 extra={'selected_collection': selected_collection,
-                                        'selected_collection_xml': selected_collection_xml})
+                                 extra={'selected_collection': selected_collection})
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.result.connect(thread.quit)
@@ -443,7 +431,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def update_current_sync_folder(self, file: str, path: list[PathComponent] | None = None,
                                    set_url_name=False, delete=False):
         if path is None:
-            path = []
+            path: list[PathComponent] = []
 
         current_collection = self.get_selected_collection()
         current_collection.sync_bookmark_file = file
@@ -659,7 +647,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
 class TreeContextMenu(QMenu):
-    def __init__(self, parent: QTreeView, point):
+    def __init__(self, parent: QTreeView, point: QPoint):
         super().__init__(parent)
         self.parent = parent
         self.model: LibraryModel = cast(LibraryModel, parent.model())
@@ -674,12 +662,12 @@ class TreeContextMenu(QMenu):
         if isinstance(self.item, FolderItem) or self.index.model() is None:
             add_folder_action = QAction('Add Folder')
             add_folder_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderNew))
-            add_folder_action.triggered.connect(lambda: self.add_folder(True))
+            add_folder_action.triggered.connect(lambda: self.add_folder(is_folder=True))
             self.addAction(add_folder_action)
 
             add_collection_action = QAction('Add Collection')
             add_collection_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.ContactNew))
-            add_collection_action.triggered.connect(lambda: self.add_folder(False))
+            add_collection_action.triggered.connect(lambda: self.add_folder(is_folder=False))
             self.addAction(add_collection_action)
         elif isinstance(self.item, CollectionItem):
             add_url_action = QAction('Add URL')
@@ -728,11 +716,12 @@ class TreeContextMenu(QMenu):
         self.exec(self.parent.mapToGlobal(point))
 
     def add_folder(self, is_folder: bool):
+        # self.item is the parent item
         assert isinstance(self.item, FolderItem)  # make ide happy
         if is_folder:
-            new_folder = self.model.add_folder(self.item)
+            new_folder = self.model.add_folder(parent=self.item)
         else:
-            new_folder = self.model.add_collection(self.item)
+            new_folder = self.model.add_collection(parent=self.item)
 
         new_index = self.model.indexFromItem(new_folder)
         self.parent.setCurrentIndex(new_index)
@@ -776,13 +765,17 @@ class TreeContextMenu(QMenu):
                 self.model.add_url(self.item, **data)
 
     def toggle_excluded(self):
+        assert isinstance(self.item, CollectionUrlItem)
+
         self.item.excluded = not self.item.excluded
         font = self.item.font()
         font.setStrikeOut(not font.strikeOut())
         self.item.setFont(font)
 
     def toggle_concat(self):
+        assert isinstance(self.item, CollectionUrlItem)
         self.item.concat = not self.item.concat
 
     def toggle_subfolder(self):
+        assert isinstance(self.item, CollectionUrlItem)
         self.item.save_to_subfolder = not self.item.save_to_subfolder

@@ -1,11 +1,10 @@
-import os
-from typing import cast, Union
+from typing import cast, Union, Callable
 from xml.etree.ElementTree import Element
 
 import pandas as pd
 from PySide6.QtGui import QIcon
 
-from downloader import MusicSyncDownloader
+from musicsync.downloader import MusicSyncDownloader
 from musicsync.music_sync_library import Collection, CollectionUrl, Folder, MusicSyncLibrary, Script, PathComponent, \
     TrackSyncStatus, TrackSyncAction, ScriptReference
 from .xml_model import XmlObjectModel, XmlObjectModelItem
@@ -26,11 +25,7 @@ class LibraryModel(XmlObjectModel):
 
             assert self.library_object is not None  # make ide happy
 
-            for child in self.library_object.children:
-                if isinstance(child, Folder):
-                    self.root.appendRow(FolderItem.from_xml_object(child))
-                elif isinstance(child, Collection):
-                    self.root.appendRow(CollectionItem.from_xml_object(child))
+            self.pull_from_xml_object()
 
     @property
     def path(self) -> str:
@@ -59,14 +54,29 @@ class LibraryModel(XmlObjectModel):
     def metadata_table(self, value: pd.DataFrame):
         self.library_object.metadata_table = value
 
+    # different name because children already is an attribute of QObject
+    @property
+    def library_children(self) -> list[Union['Folder', 'Collection']]:
+        assert self.library_object is not None
+
+        self.push_to_xml_object()
+        return self.library_object.children
+
+    @library_children.setter
+    def library_children(self, value: list[Union['Folder', 'Collection']]):
+        assert self.library_object is not None
+
+        self.library_object.children = value
+        self.pull_from_xml_object()
+
     @staticmethod
     def item_from_xml(el: Element) -> XmlObjectModelItem:
         if el.tag == 'Folder':
-            return FolderItem.from_xml_object(Folder.from_xml(el))
+            return FolderItem(Folder.from_xml(el))
         elif el.tag == 'Collection':
-            return CollectionItem.from_xml_object(Collection.from_xml(el))
+            return CollectionItem(Collection.from_xml(el))
         elif el.tag == 'CollectionUrl':
-            return CollectionUrlItem.from_xml_object(CollectionUrl.from_xml(el))
+            return CollectionUrlItem(CollectionUrl.from_xml(el))
 
         raise ValueError(f'Unknown tag {el.tag}')
 
@@ -83,32 +93,45 @@ class LibraryModel(XmlObjectModel):
 
         return True
 
-    def to_library_object(self) -> MusicSyncLibrary:
+    def push_to_xml_object(self):
         children = []
         for i in range(self.root.rowCount()):
             row = cast(XmlObjectModelItem, self.root.child(i))
-            children.append(row.to_xml_object())
-        return MusicSyncLibrary(scripts=self.scripts,
-                                metadata_table=self.metadata_table,
-                                children=children)
+            row.push_to_xml_object()
+            children.append(row.xml_object)
+
+        self.library_object.children = children
+
+    def pull_from_xml_object(self) -> None:
+        self.removeRows(0, self.rowCount())
+
+        assert self.library_object is not None  # make ide happy
+
+        for child in self.library_object.children:
+            if isinstance(child, Folder):
+                self.root.appendRow(FolderItem(child))
+            elif isinstance(child, Collection):
+                self.root.appendRow(CollectionItem(child))
 
     def to_xml(self, filename: str | None=None):
         if filename is None:
-            filename = self.path
+            filename: str = self.path
 
         if filename.endswith('.pkl'):
-            filename = filename[:-4] + '.xml'
+            filename: str = filename[:-4] + '.xml'
 
-        lib_object = self.to_library_object()
-        self.saved_library_object = lib_object
-        lib_object.write_xml(filename)
+        assert self.library_object is not None
+        self.library_object.write_xml(filename)
+        self.saved_library_object = MusicSyncLibrary.read_xml(filename)
 
     def to_pickle(self, filename: str | None=None):
         if filename is None:
-            filename = self.path
-        lib_object = self.to_library_object()
-        self.saved_library_object = lib_object
-        lib_object.write_pickle(filename)
+            filename: str = self.path
+
+        assert self.library_object is not None
+
+        self.library_object.write_pickle(filename)
+        self.saved_library_object = MusicSyncLibrary.read_pickle(filename)
 
     def has_changed(self):
         if self.root.rowCount() == 0:
@@ -117,7 +140,7 @@ class LibraryModel(XmlObjectModel):
         if self.saved_library_object is None:
             return True
 
-        return self.to_library_object() != self.saved_library_object
+        return self.library_object != self.saved_library_object
 
     @staticmethod
     def add_folder(parent: FolderItem):
@@ -391,6 +414,24 @@ class CollectionItem(XmlObjectModelItem):
             children.append(child.xml_object)
 
         self.xml_object.urls = children
+
+    def compare(self, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> pd.DataFrame | Exception:
+        assert self.xml_object is not None
+
+        self.push_to_xml_object()
+        result = self.xml_object.compare(progress_callback=progress_callback, interruption_callback=interruption_callback)
+        self.pull_from_xml_object()
+
+        return result
+
+    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None = None,
+             interruption_callback: Callable[[], bool] | None = None) -> None | Exception:
+        assert self.xml_object is not None
+
+        self.push_to_xml_object()
+        result = self.xml_object.sync(info_df, progress_callback, interruption_callback)
+        self.pull_from_xml_object()
+        return result
 
     def get_real_path(self, url: 'CollectionUrl', track=None):
         self.push_to_xml_object()
