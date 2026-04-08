@@ -1,62 +1,68 @@
 from abc import abstractmethod, ABC, ABCMeta
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QPersistentModelIndex
-from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtGui import QIcon, QFont
 
 from musicsync.xml_object import XmlObject
 
-QStandardItemMeta = type(QStandardItem)
+QAbstractItemModelMeta = type(QAbstractItemModel)
 
 
-class _ABCQStandardItemMeta(QStandardItemMeta, ABCMeta):
-    pass
-
-
-QStandardItemModelMeta = type(QStandardItemModel)
-
-
-class _ABCQStandardItemModelMeta(QStandardItemModelMeta, ABCMeta):
+class _ABCQAbstractItemModelMeta(QAbstractItemModelMeta, ABCMeta):
     pass
 
 
 class XmlObjectModelItem(ABC):
-    def __init__(self, xml_object: XmlObject | None = None, parent: XmlObjectModelItem | None = None, children: list[XmlObjectModelItem] | None = None):
-        if children is None:
-            children: list[XmlObjectModelItem] = []
-
-        self.item_parent: XmlObjectModelItem | None = parent
-        self.item_children: list[XmlObjectModelItem] = children
+    def __init__(self, xml_object: XmlObject | None, icon: QIcon = QIcon(), font: QFont = QFont()):
+        self.parent: XmlObjectModelItem | None = None
+        self.children: list[XmlObjectModelItem] = []
 
         self.xml_object = xml_object
 
-    def child(self, row: int) -> XmlObjectModelItem | None:
-        if row >= self.row_count() or row < 0:
-            return None
+        self.model: XmlObjectModel | None = None
 
-        return self.item_children[row]
+        self.icon = icon
+        self.font = font
+
+    def child(self, row: int) -> XmlObjectModelItem:
+        return self.children[row]
 
     def row_count(self) -> int:
-        return len(self.item_children)
+        return len(self.children)
 
     def row(self) -> int:
-        if self.item_parent is None:
+        if self.parent is None:
             return 0
-        return self.item_parent.item_children.index(self)
+        return self.parent.children.index(self)
 
-    def insert_child(self, row: int, child: XmlObjectModelItem):
-        child.item_parent = self
-        self.item_children.insert(row, child)
+    def _insert_child(self, row: int, child: XmlObjectModelItem):
+        child.parent = self
+        self.children.insert(row, child)
 
-    def append_child(self, child: XmlObjectModelItem):
-        self.insert_child(self.row_count(), child)
+    def _append_child(self, child: XmlObjectModelItem):
+        self._insert_child(self.row_count(), child)
 
-    def pop_child(self, row: int):
-        child = self.item_children.pop(row)
-        child.item_parent = None
+    def _pop_child(self, row: int):
+        child = self.children.pop(row)
+        child.parent = None
         return child
 
+    def append_row(self, item: XmlObjectModelItem):
+        assert self.model is not None
+
+        self.model.insert_item_at_item(item, self.row_count(), self)
+
+    def remove_rows(self, row: int, count: int):
+        assert self.model is not None
+
+        self.model.remove_rows_from_item(row, count, self)
+
     @abstractmethod
-    def display_data(self) -> str:
+    def get_text(self) -> str:
+        pass
+
+    @abstractmethod
+    def set_text(self, value: str):
         pass
 
     @abstractmethod
@@ -69,11 +75,14 @@ class XmlObjectModelItem(ABC):
 
 
 class RootItem(XmlObjectModelItem):
-    def __init__(self, children: list[XmlObjectModelItem] | None = None):
-        super().__init__(parent=None, children=children)
+    def __init__(self):
+        super().__init__(xml_object=None)
 
-    def display_data(self) -> str:
+    def get_text(self) -> str:
         return ''
+
+    def set_text(self, value: str):
+        pass
 
     def push_to_xml_object(self):
         pass
@@ -82,7 +91,7 @@ class RootItem(XmlObjectModelItem):
         pass
 
 
-class XmlObjectModel(QAbstractItemModel, ABC):
+class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMeta):
     """
     A QAbstractItemModel whose items are `XmlObjectModelItem`s.
     """
@@ -95,13 +104,13 @@ class XmlObjectModel(QAbstractItemModel, ABC):
         return 1
 
     def rowCount(self, /, parent: QModelIndex = QModelIndex()) -> int:
-        return self.get_item(parent).row_count()
+        return self.item_from_index(parent).row_count()
 
     def index(self, row, column, parent: QModelIndex = QModelIndex()) -> QModelIndex:
         if not self.hasIndex(row, column, parent):
             return QModelIndex()
 
-        parent_item = self.get_item(parent)
+        parent_item = self.item_from_index(parent)
         child_item = parent_item.child(row)
         if not child_item:
             return QModelIndex()
@@ -112,8 +121,8 @@ class XmlObjectModel(QAbstractItemModel, ABC):
         if not index.isValid():
             return QModelIndex()
 
-        item = self.get_item(index)
-        parent_item = item.item_parent
+        item = self.item_from_index(index)
+        parent_item = item.parent
 
         if parent_item is None or parent_item is self.root:
             return QModelIndex()
@@ -125,23 +134,51 @@ class XmlObjectModel(QAbstractItemModel, ABC):
         if not index.isValid():
             return None
 
-        item = self.get_item(index)
+        item = self.item_from_index(index)
         if role == Qt.ItemDataRole.DisplayRole:
-            return item.display_data()
+            return item.get_text()
+
+        if role == Qt.ItemDataRole.DecorationRole:
+            return item.icon
+
+        if role == Qt.ItemDataRole.FontRole:
+            return item.font
 
         return None
 
+    def setData(self, index, value, /, role: Qt.ItemDataRole = Qt.ItemDataRole.EditRole) -> bool:
+        if not index.isValid():
+            return False
+
+        if role == Qt.ItemDataRole.EditRole:
+            item = self.item_from_index(index)
+            item.set_text(str(value))
+            self.dataChanged.emit(index, index, [role])
+            return True
+
+        return False
+
     def flags(self, index: QModelIndex):
-        flags = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsDropEnabled
-        if index.isValid() and self.item_is_container(self.get_item(index)):
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+
+        flags = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsEditable
+
+        if self.item_is_container(self.item_from_index(index)):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
 
         return flags
 
-    def get_item(self, index: QModelIndex | QPersistentModelIndex) -> XmlObjectModelItem:
+    def item_from_index(self, index: QModelIndex | QPersistentModelIndex) -> XmlObjectModelItem:
         if index.isValid():
             return index.internalPointer()
         return self.root
+
+    def index_from_item(self, item: XmlObjectModelItem | None):
+        if item is None or item is self.root:
+            return QModelIndex()
+
+        return self.createIndex(item.row(), 0, item)
 
     def supportedDropActions(self, /):
         return Qt.DropAction.MoveAction
@@ -151,8 +188,8 @@ class XmlObjectModel(QAbstractItemModel, ABC):
         if count != 1:
             return False
 
-        source_parent_item = self.get_item(source_parent)
-        destination_parent_item = self.get_item(destination_parent)
+        source_parent_item = self.item_from_index(source_parent)
+        destination_parent_item = self.item_from_index(destination_parent)
 
         # Disallow moving into itself or its descendants
         item = source_parent_item.child(source_row)
@@ -160,7 +197,7 @@ class XmlObjectModel(QAbstractItemModel, ABC):
         while p is not None:
             if p is item:
                 return False
-            p = p.item_parent
+            p = p.parent
 
         if source_parent != destination_parent and destination_child > source_row:
             destination_child -= 1
@@ -169,11 +206,50 @@ class XmlObjectModel(QAbstractItemModel, ABC):
             return False
 
         self.beginMoveRows(source_parent, source_row, source_row, destination_parent, destination_child)
-        moved_item = source_parent_item.pop_child(source_row)
-        destination_parent_item.insert_child(destination_child, moved_item)
+        moved_item = source_parent_item._pop_child(source_row)
+        destination_parent_item._insert_child(destination_child, moved_item)
         self.endMoveRows()
 
         return True
+
+    def insertRows(self, row: int, count: int, /, parent: QModelIndex = QModelIndex()) -> bool:
+        # let's hope it works without implementing this
+        pass
+
+    def insert_item_at_index(self, item: XmlObjectModelItem, row: int | None = None, parent: QModelIndex = QModelIndex()):
+        parent_item = self.item_from_index(parent)
+        if row is None:
+            row: int = parent_item.row_count()
+
+        item.model = self
+
+        self.beginInsertRows(parent, row, row)
+        parent_item._insert_child(row, item)
+        self.endInsertRows()
+
+    def insert_item_at_item(self, item: XmlObjectModelItem, row: int | None = None, parent: XmlObjectModelItem | None = None):
+        self.insert_item_at_index(item, row, self.index_from_item(parent))
+
+    def removeRows(self, row: int, count: int, /, parent: QModelIndex = QModelIndex()) -> bool:
+        parent_item = self.item_from_index(parent)
+
+        if count <= 0:
+            return False
+
+        if row < 0 or row + count > parent_item.row_count():
+            return False
+
+        self.beginRemoveRows(parent, row, row + count - 1)
+        for child in parent_item.children[row:row + count]:
+            child.parent = None
+            child.model = None
+        del parent_item.children[row:row + count]
+        self.endRemoveRows()
+
+        return True
+
+    def remove_rows_from_item(self, row: int, count: int, parent: XmlObjectModelItem | None = None) -> bool:
+        return self.removeRows(row, count, self.index_from_item(parent))
 
     @abstractmethod
     def validate_move(self, source_parent: QModelIndex, source_row: int, destination_parent: QModelIndex, destination_child: int) -> bool:

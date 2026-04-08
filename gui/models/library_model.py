@@ -1,7 +1,7 @@
 from typing import cast, Union, Callable
-from xml.etree.ElementTree import Element
 
 import pandas as pd
+from PySide6.QtCore import QModelIndex
 from PySide6.QtGui import QIcon
 
 from musicsync.downloader import MusicSyncDownloader
@@ -84,9 +84,30 @@ class LibraryModel(XmlObjectModel):
 
         for child in self.library_object.children:
             if isinstance(child, Folder):
-                self.root.append_child(FolderItem(child))
+                self.insert_item_at_item(FolderItem(child))
             elif isinstance(child, Collection):
-                self.root.append_child(CollectionItem(child))
+                self.insert_item_at_item(CollectionItem(child))
+
+    def item_is_container(self, item: XmlObjectModelItem) -> bool:
+        if isinstance(item, CollectionUrlItem):
+            return False
+
+        return True
+
+    def validate_move(self, source_parent: QModelIndex, source_row: int, destination_parent: QModelIndex, destination_child: int) -> bool:
+        parent_item = self.item_from_index(destination_parent)
+        item = self.item_from_index(source_parent).child(source_row)
+
+        if (parent_item is None or isinstance(parent_item, FolderItem)) and isinstance(item, CollectionUrlItem):
+            return False
+
+        if isinstance(parent_item, CollectionItem) and (isinstance(item, (CollectionItem, FolderItem))):
+            return False
+
+        if isinstance(parent_item, CollectionUrlItem):
+            return False
+
+        return True
 
     def to_xml(self, filename: str | None=None):
         if filename is None:
@@ -117,28 +138,26 @@ class LibraryModel(XmlObjectModel):
 
         return self.library_object != self.saved_library_object
 
-    @staticmethod
-    def add_folder(parent: FolderItem):
+
+    def add_folder(self, parent: FolderItem):
         new_folder = FolderItem()
-        parent.appendRow(new_folder)
+        self.insert_item_at_item(new_folder, None, parent)
         return new_folder
 
-    @staticmethod
-    def add_collection(parent: FolderItem):
+    def add_collection(self, parent: FolderItem):
         new_collection = CollectionItem()
-        parent.appendRow(new_collection)
+        self.insert_item_at_item(new_collection, None, parent)
         return new_collection
 
-    @staticmethod
-    def add_url(parent: CollectionItem, url: str='', name: str= ''):
+    def add_url(self, parent: CollectionItem, url: str='', name: str= ''):
         new_url = CollectionUrlItem(url=url, name=name, concat=parent.auto_concat_urls, resolved=False)
-        parent.appendRow(new_url)
+        self.insert_item_at_item(new_url, None, parent)
         return new_url
 
 
 class FolderItem(XmlObjectModelItem):
     def __init__(self, xml_object: Folder | None = None, **kwargs):
-        super().__init__()
+        super().__init__(xml_object, icon=QIcon.fromTheme('folder'))
         if xml_object is None:
             self.xml_object = Folder(**kwargs)
         else:
@@ -146,17 +165,13 @@ class FolderItem(XmlObjectModelItem):
 
         self.pull_from_xml_object()
 
-        self.setIcon(QIcon.fromTheme('folder'))
-
     @property
     def name(self) -> str:
-        self.push_to_xml_object(only_name=True)
         return self.xml_object.name
 
     @name.setter
     def name(self, value: str) -> None:
         self.xml_object.name = value
-        self.pull_from_xml_object(only_name=True)
 
     @property
     def children(self) -> list[Union['Folder', 'Collection']]:
@@ -168,30 +183,25 @@ class FolderItem(XmlObjectModelItem):
         self.xml_object.children = value
         self.pull_from_xml_object()
 
+    def get_text(self) -> str:
+        return self.xml_object.name
 
-    def pull_from_xml_object(self, only_name: bool = False):
-        self.setText(self.xml_object.name)
+    def set_text(self, value: str):
+        self.xml_object.name = value
 
-        if only_name:
-            return
-
-        self.removeRows(0, self.rowCount())
+    def pull_from_xml_object(self):
+        assert self.model is not None
+        self.remove_rows(0, self.row_count())
 
         for child in self.xml_object.children:
             if isinstance(child, Folder):
-                self.appendRow(FolderItem(child))
+                self.append_row(FolderItem(child))
             elif isinstance(child, Collection):
-                self.appendRow(CollectionItem(child))
+                self.append_row(CollectionItem(child))
 
-
-    def push_to_xml_object(self, only_name: bool = False):
-        self.xml_object.name = self.text()
-
-        if only_name:
-            return
-
+    def push_to_xml_object(self):
         children = []
-        for i in range(self.rowCount()):
+        for i in range(self.row_count()):
             child = self.child(i)
             child.push_to_xml_object()
             children.append(child.xml_object)
@@ -201,15 +211,13 @@ class FolderItem(XmlObjectModelItem):
 
 class CollectionItem(XmlObjectModelItem):
     def __init__(self, xml_object: Collection | None = None, **kwargs):
-        super().__init__()
+        super().__init__(xml_object, icon=QIcon.fromTheme('text-x-generic'))
         if xml_object is None:
             self.xml_object = Collection(**kwargs)
         else:
             self.xml_object = xml_object
 
         self.pull_from_xml_object()
-
-        self.setIcon(QIcon.fromTheme('text-x-generic'))
 
         self.comparing: bool = False
         self.syncing: bool = False
@@ -219,13 +227,11 @@ class CollectionItem(XmlObjectModelItem):
 
     @property
     def name(self) -> str:
-        self.push_to_xml_object(only_name=True)
         return self.xml_object.name
 
     @name.setter
     def name(self, value: str) -> None:
         self.xml_object.name = value
-        self.pull_from_xml_object(only_name=True)
 
     @property
     def folder_path(self) -> str:
@@ -365,25 +371,21 @@ class CollectionItem(XmlObjectModelItem):
     def downloader(self, value: MusicSyncDownloader | None) -> None:
         self.xml_object.downloader = value
 
-    def pull_from_xml_object(self, only_name: bool = False):
-        self.setText(self.xml_object.name)
+    def get_text(self) -> str:
+        return self.xml_object.name
 
-        if only_name:
-            return
+    def set_text(self, value: str):
+        self.xml_object.name = value
 
-        self.removeRows(0, self.rowCount())
+    def pull_from_xml_object(self):
+        self.remove_rows(0, self.row_count())
 
         for url in self.xml_object.urls:
-            self.appendRow(CollectionUrlItem(url))
+            self.append_row(CollectionUrlItem(url))
 
-    def push_to_xml_object(self, only_name: bool = False):
-        self.xml_object.name = self.text()
-
-        if only_name:
-            return
-
+    def push_to_xml_object(self):
         children = []
-        for i in range(self.rowCount()):
+        for i in range(self.row_count()):
             child = self.child(i)
             child.push_to_xml_object()
             children.append(child.xml_object)
@@ -412,13 +414,10 @@ class CollectionItem(XmlObjectModelItem):
         self.push_to_xml_object()
         return self.xml_object.get_real_path(url, track)
 
-    def child(self, row, *args) -> 'CollectionUrlItem':
-        return cast(CollectionUrlItem, super().child(row, *args))
-
 
 class CollectionUrlItem(XmlObjectModelItem):
     def __init__(self, xml_object: CollectionUrl | None = None, **kwargs):
-        super().__init__()
+        super().__init__(xml_object, icon=QIcon.fromTheme('folder-remote'))
         if xml_object is None:
             self.xml_object: CollectionUrl = CollectionUrl(**kwargs)
         else:
@@ -426,27 +425,21 @@ class CollectionUrlItem(XmlObjectModelItem):
 
         self.pull_from_xml_object()
 
-        self.setIcon(QIcon.fromTheme('folder-remote'))
-
     @property
     def name(self) -> str:
-        self.push_to_xml_object()
         return self.xml_object.name
 
     @name.setter
     def name(self, value: str) -> None:
         self.xml_object.name = value
-        self.pull_from_xml_object()
 
     @property
     def url(self) -> str:
-        self.push_to_xml_object()
         return self.xml_object.url
 
     @url.setter
     def url(self, value: str) -> None:
         self.xml_object.url = value
-        self.pull_from_xml_object()
 
     @property
     def tracks(self) -> pd.DataFrame:
@@ -488,26 +481,24 @@ class CollectionUrlItem(XmlObjectModelItem):
     def save_to_subfolder(self, value: bool) -> None:
         self.xml_object.save_to_subfolder = value
 
+    def get_text(self) -> str:
+        return self.xml_object.name or self.xml_object.url
+
+    def set_text(self, value: str):
+        resolved = not self.font.italic()
+        if resolved:
+            self.xml_object.name = value
+        else:
+            self.xml_object.url = value
+
     def pull_from_xml_object(self):
-        f = self.font()
+        f = self.font
         if self.xml_object.name:
             f.setItalic(False)
-            self.setText(self.xml_object.name)
         else:
             f.setItalic(True)
-            self.setText(self.xml_object.url)
 
-        self.setFont(f)
+        self.font = f
 
     def push_to_xml_object(self):
-        resolved = not self.font().italic()
-
-        name = self.text() if resolved else ''
-        url = self.xml_object.url if resolved else self.text()
-
-        self.xml_object.name = name
-        self.xml_object.url = url
-
-    # for correct types
-    def parent(self, /) -> 'CollectionItem':
-        return cast(CollectionItem, super().parent())
+        pass
