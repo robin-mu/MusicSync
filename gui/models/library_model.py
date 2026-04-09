@@ -117,6 +117,7 @@ class LibraryModel(XmlObjectModel):
             filename: str = filename[:-4] + '.xml'
 
         assert self.library_object is not None
+        self.push_to_xml_object()
         self.library_object.write_xml(filename)
         self.saved_library_object = MusicSyncLibrary.read_xml(filename)
 
@@ -126,6 +127,7 @@ class LibraryModel(XmlObjectModel):
 
         assert self.library_object is not None
 
+        self.push_to_xml_object()
         self.library_object.write_pickle(filename)
         self.saved_library_object = MusicSyncLibrary.read_pickle(filename)
 
@@ -136,21 +138,21 @@ class LibraryModel(XmlObjectModel):
         if self.saved_library_object is None:
             return True
 
+        self.push_to_xml_object()
         return self.library_object != self.saved_library_object
 
-
-    def add_folder(self, parent: FolderItem):
+    def add_folder(self, parent: FolderItem | None):
         new_folder = FolderItem()
         self.insert_item_at_item(new_folder, None, parent)
         return new_folder
 
-    def add_collection(self, parent: FolderItem):
+    def add_collection(self, parent: FolderItem | None):
         new_collection = CollectionItem()
         self.insert_item_at_item(new_collection, None, parent)
         return new_collection
 
     def add_url(self, parent: CollectionItem, url: str='', name: str= ''):
-        new_url = CollectionUrlItem(url=url, name=name, concat=parent.auto_concat_urls, resolved=False)
+        new_url = CollectionUrlItem(url=url, name=name, concat=parent.auto_concat_urls)
         self.insert_item_at_item(new_url, None, parent)
         return new_url
 
@@ -159,11 +161,16 @@ class FolderItem(XmlObjectModelItem):
     def __init__(self, xml_object: Folder | None = None, **kwargs):
         super().__init__(xml_object, icon=QIcon.fromTheme('folder'))
         if xml_object is None:
-            self.xml_object = Folder(**kwargs)
+            self.xml_object = Folder(name=kwargs.get('name', ''), **kwargs)
         else:
             self.xml_object = xml_object
 
-        self.pull_from_xml_object()
+        # here the object isn't attached to a model yet, so calling pull_from_xml_object won't work
+        for child in self.xml_object.children:
+            if isinstance(child, Folder):
+                self._append_child(FolderItem(child))
+            elif isinstance(child, Collection):
+                self._append_child(CollectionItem(child))
 
     @property
     def name(self) -> str:
@@ -213,11 +220,13 @@ class CollectionItem(XmlObjectModelItem):
     def __init__(self, xml_object: Collection | None = None, **kwargs):
         super().__init__(xml_object, icon=QIcon.fromTheme('text-x-generic'))
         if xml_object is None:
-            self.xml_object = Collection(**kwargs)
+            self.xml_object = Collection(name=kwargs.get('name', ''), **kwargs)
         else:
             self.xml_object = xml_object
 
-        self.pull_from_xml_object()
+        # here the object isn't attached to a model yet, so calling pull_from_xml_object won't work
+        for url in self.xml_object.urls:
+            self._append_child(CollectionUrlItem(url))
 
         self.comparing: bool = False
         self.syncing: bool = False
@@ -502,3 +511,7 @@ class CollectionUrlItem(XmlObjectModelItem):
 
     def push_to_xml_object(self):
         pass
+
+    @property
+    def parent(self) -> CollectionItem:
+        return cast(CollectionItem, super().parent)

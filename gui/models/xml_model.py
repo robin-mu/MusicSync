@@ -1,6 +1,7 @@
 from abc import abstractmethod, ABC, ABCMeta
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QPersistentModelIndex
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QPersistentModelIndex, QMimeData, QDataStream, \
+    QByteArray, QIODevice
 from PySide6.QtGui import QIcon, QFont
 
 from musicsync.xml_object import XmlObject
@@ -13,9 +14,15 @@ class _ABCQAbstractItemModelMeta(QAbstractItemModelMeta, ABCMeta):
 
 
 class XmlObjectModelItem(ABC):
-    def __init__(self, xml_object: XmlObject | None, icon: QIcon = QIcon(), font: QFont = QFont()):
-        self.parent: XmlObjectModelItem | None = None
-        self.children: list[XmlObjectModelItem] = []
+    def __init__(self, xml_object: XmlObject | None, icon: QIcon = None, font: QFont = None):
+        if icon is None:
+            icon = QIcon()
+
+        if font is None:
+            font = QFont()
+
+        self.item_parent: XmlObjectModelItem | None = None
+        self.item_children: list[XmlObjectModelItem] = []
 
         self.xml_object = xml_object
 
@@ -24,27 +31,31 @@ class XmlObjectModelItem(ABC):
         self.icon = icon
         self.font = font
 
+    @property
+    def parent(self) -> XmlObjectModelItem | None:
+        return self.item_parent
+
     def child(self, row: int) -> XmlObjectModelItem:
-        return self.children[row]
+        return self.item_children[row]
 
     def row_count(self) -> int:
-        return len(self.children)
+        return len(self.item_children)
 
     def row(self) -> int:
-        if self.parent is None:
+        if self.item_parent is None:
             return 0
-        return self.parent.children.index(self)
+        return self.item_parent.item_children.index(self)
 
     def _insert_child(self, row: int, child: XmlObjectModelItem):
-        child.parent = self
-        self.children.insert(row, child)
+        child.item_parent = self
+        self.item_children.insert(row, child)
 
     def _append_child(self, child: XmlObjectModelItem):
         self._insert_child(self.row_count(), child)
 
     def _pop_child(self, row: int):
-        child = self.children.pop(row)
-        child.parent = None
+        child = self.item_children.pop(row)
+        child.item_parent = None
         return child
 
     def append_row(self, item: XmlObjectModelItem):
@@ -103,7 +114,7 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
     def columnCount(self, /, parent: QModelIndex = QModelIndex()) -> int:
         return 1
 
-    def rowCount(self, /, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, /, parent: QModelIndex | QPersistentModelIndex = QModelIndex()) -> int:
         return self.item_from_index(parent).row_count()
 
     def index(self, row, column, parent: QModelIndex = QModelIndex()) -> QModelIndex:
@@ -122,7 +133,7 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
             return QModelIndex()
 
         item = self.item_from_index(index)
-        parent_item = item.parent
+        parent_item = item.item_parent
 
         if parent_item is None or parent_item is self.root:
             return QModelIndex()
@@ -135,7 +146,7 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
             return None
 
         item = self.item_from_index(index)
-        if role == Qt.ItemDataRole.DisplayRole:
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return item.get_text()
 
         if role == Qt.ItemDataRole.DecorationRole:
@@ -162,7 +173,7 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         if not index.isValid():
             return Qt.ItemFlag.NoItemFlags
 
-        flags = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsDropEnabled | Qt.ItemFlag.ItemIsEditable
+        flags = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsEditable
 
         if self.item_is_container(self.item_from_index(index)):
             flags |= Qt.ItemFlag.ItemIsDropEnabled
@@ -178,26 +189,89 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         if item is None or item is self.root:
             return QModelIndex()
 
+        assert item is not None
         return self.createIndex(item.row(), 0, item)
 
     def supportedDropActions(self, /):
         return Qt.DropAction.MoveAction
 
-    def moveRows(self, source_parent: QModelIndex, source_row: int, count: int, destination_parent: QModelIndex,
+    def mimeTypes(self, /):
+        return ['application/x-xml-object-model-item']
+
+    @staticmethod
+    def path_from_index(index: QModelIndex) -> list[int]:
+        path = []
+        while index.isValid():
+            path.insert(0, index.row())
+            index = index.parent()
+        return path
+
+    def index_from_path(self, path: list[int]) -> QModelIndex:
+        parent = QModelIndex()
+        for row in path:
+            parent = self.index(row, 0, parent)
+            if not parent.isValid():
+                return QModelIndex()
+
+        return parent
+
+    def mimeData(self, indexes, /):
+        mime = QMimeData()
+        encoded = QByteArray()
+        stream = QDataStream(encoded, QIODevice.OpenModeFlag.WriteOnly)
+
+        if not indexes:
+            return mime
+
+        index = indexes[0]
+        if index is None:
+            return mime
+
+        parent_index = index.parent()
+        parent_path = self.path_from_index(parent_index)
+        source_row = index.row()
+
+        stream.writeInt32(len(parent_path))
+        for r in parent_path:
+            stream.writeInt32(r)
+        stream.writeInt32(source_row)
+
+        mime.setData('application/x-xml-object-model-item', encoded)
+        return mime
+
+    def dropMimeData(self, data, action, row, column, parent, /) -> bool:
+        print('drop', action)
+        if action == Qt.DropAction.IgnoreAction:
+            return True
+
+        if action != Qt.DropAction.MoveAction:
+            return False
+
+        if not data.hasFormat('application/x-xml-object-model-item'):
+            return False
+
+        encoded = data.data('application/x-xml-object-model-item')
+        stream = QDataStream(encoded, QIODevice.OpenModeFlag.ReadOnly)
+        n = stream.readInt32()
+        parent_path = [stream.readInt32() for _ in range(n)]
+        source_row = stream.readInt32()
+
+        source_parent = self.index_from_path(parent_path)
+
+        if row == -1:
+            row = self.rowCount(parent)
+
+        return self.moveRows(source_parent, source_row, 1, parent, row)
+
+    def moveRows(self, source_parent: QModelIndex, source_row: int, count: int, destination_parent: QModelIndex | QPersistentModelIndex,
                  destination_child: int, /):
+        print('move')
+
         if count != 1:
             return False
 
         source_parent_item = self.item_from_index(source_parent)
         destination_parent_item = self.item_from_index(destination_parent)
-
-        # Disallow moving into itself or its descendants
-        item = source_parent_item.child(source_row)
-        p = destination_parent_item
-        while p is not None:
-            if p is item:
-                return False
-            p = p.parent
 
         if source_parent != destination_parent and destination_child > source_row:
             destination_child -= 1
@@ -205,16 +279,15 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         if not self.validate_move(source_parent, source_row, destination_parent, destination_child):
             return False
 
+        print(source_parent, source_row, destination_parent, destination_child)
+
         self.beginMoveRows(source_parent, source_row, source_row, destination_parent, destination_child)
         moved_item = source_parent_item._pop_child(source_row)
         destination_parent_item._insert_child(destination_child, moved_item)
         self.endMoveRows()
 
+        print('aa')
         return True
-
-    def insertRows(self, row: int, count: int, /, parent: QModelIndex = QModelIndex()) -> bool:
-        # let's hope it works without implementing this
-        pass
 
     def insert_item_at_index(self, item: XmlObjectModelItem, row: int | None = None, parent: QModelIndex = QModelIndex()):
         parent_item = self.item_from_index(parent)
@@ -240,10 +313,10 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
             return False
 
         self.beginRemoveRows(parent, row, row + count - 1)
-        for child in parent_item.children[row:row + count]:
-            child.parent = None
+        for child in parent_item.item_children[row:row + count]:
+            child.item_parent = None
             child.model = None
-        del parent_item.children[row:row + count]
+        del parent_item.item_children[row:row + count]
         self.endRemoveRows()
 
         return True
@@ -252,7 +325,7 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         return self.removeRows(row, count, self.index_from_item(parent))
 
     @abstractmethod
-    def validate_move(self, source_parent: QModelIndex, source_row: int, destination_parent: QModelIndex, destination_child: int) -> bool:
+    def validate_move(self, source_parent: QModelIndex, source_row: int, destination_parent: QModelIndex | QPersistentModelIndex, destination_child: int) -> bool:
         pass
 
     @abstractmethod

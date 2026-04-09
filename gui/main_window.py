@@ -165,12 +165,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not selected_indexes:
             return None
 
-        current_collection = self.library_tree_view.model().itemFromIndex(selected_indexes[0])
+        current_collection = self.library_tree_view.model().item_from_index(selected_indexes[0])
         if isinstance(current_collection, FolderItem):
             return None
 
         if isinstance(current_collection, CollectionUrlItem):
-            current_collection = current_collection.parent()
+            current_collection = current_collection.parent
         return current_collection
 
     # -----------------
@@ -180,15 +180,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not selected.indexes():
             return
 
-        selected_collection = self.library_tree_view.model().itemFromIndex(selected.indexes()[0])
+        selected_collection = self.library_tree_view.model().item_from_index(selected.indexes()[0])
 
         if isinstance(selected_collection, CollectionUrlItem):
-            selected_collection = selected_collection.parent()
+            selected_collection = selected_collection.parent
 
         if deselected.indexes():
-            deselected_collection = self.library_tree_view.model().itemFromIndex(deselected.indexes()[0])
+            deselected_collection = self.library_tree_view.model().item_from_index(deselected.indexes()[0])
             if isinstance(deselected_collection, CollectionUrlItem):
-                deselected_collection = deselected_collection.parent()
+                deselected_collection = deselected_collection.parent
 
             if isinstance(deselected_collection, CollectionItem):
                 if selected_collection == deselected_collection:
@@ -654,12 +654,12 @@ class TreeContextMenu(QMenu):
 
         self.index = parent.indexAt(point)
 
-        if self.index.model() is None:
-            self.item = self.model.root
+        if self.index.isValid():
+            self.item = self.model.item_from_index(self.index)
         else:
-            self.item = self.model.itemFromIndex(self.index)
+            self.item = None
 
-        if isinstance(self.item, FolderItem) or self.index.model() is None:
+        if isinstance(self.item, FolderItem) or self.item is None:
             add_folder_action = QAction('Add Folder')
             add_folder_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderNew))
             add_folder_action.triggered.connect(lambda: self.add_folder(is_folder=True))
@@ -700,12 +700,12 @@ class TreeContextMenu(QMenu):
             concat_action.triggered.connect(self.toggle_concat)
             self.addAction(concat_action)
 
-        if self.index.model() is not None:
+        if self.item is not None:
             delete_action = QAction('Delete')
             delete_action.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete))
             delete_action.triggered.connect(self.remove)
 
-            if isinstance(self.item, CollectionUrlItem) and self.item.parent().sync_bookmark_file:
+            if isinstance(self.item, CollectionUrlItem) and self.item.parent.sync_bookmark_file:
                 delete_action.setToolTip(
                     'This collection is synchronized with a bookmarks folder, so manually deleting URLs is not possible')
                 delete_action.setEnabled(False)
@@ -716,14 +716,15 @@ class TreeContextMenu(QMenu):
         self.exec(self.parent.mapToGlobal(point))
 
     def add_folder(self, is_folder: bool):
+        assert isinstance(self.item, FolderItem) or self.item is None  # make ide happy
+
         # self.item is the parent item
-        assert isinstance(self.item, FolderItem)  # make ide happy
         if is_folder:
             new_folder = self.model.add_folder(parent=self.item)
         else:
             new_folder = self.model.add_collection(parent=self.item)
 
-        new_index = self.model.indexFromItem(new_folder)
+        new_index = self.model.index_from_item(new_folder)
         self.parent.setCurrentIndex(new_index)
         self.parent.edit(new_index)
 
@@ -736,7 +737,7 @@ class TreeContextMenu(QMenu):
 
         new_url = self.model.add_url(parent=self.item)
 
-        new_index = self.model.indexFromItem(new_url)
+        new_index = self.model.index_from_item(new_url)
         self.parent.setCurrentIndex(new_index)
         self.parent.edit(new_index)
 
@@ -768,9 +769,9 @@ class TreeContextMenu(QMenu):
         assert isinstance(self.item, CollectionUrlItem)
 
         self.item.excluded = not self.item.excluded
-        font = self.item.font()
+        font = self.item.font
         font.setStrikeOut(not font.strikeOut())
-        self.item.setFont(font)
+        self.item.font = font
 
     def toggle_concat(self):
         assert isinstance(self.item, CollectionUrlItem)
