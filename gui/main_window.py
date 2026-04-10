@@ -40,7 +40,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.action_save_library_as.triggered.connect(self.save_library_as)
 
         # Library Tree View
-        self.library_tree_view.setModel(LibraryModel('a.pkl'))
+        self.library_tree_view.setModel(LibraryModel())
         self.library_tree_view.expandAll()
 
         self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
@@ -75,7 +75,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             box.view().viewport().installEventFilter(self)
 
         # Scripting tab
-        self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
+        self.scripts_table.setModel(ScriptsModel(window=self))
         self.scripts_table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.scripts_table.expandAll()
         self.scripts_table.selectionModel().selectionChanged.connect(self.script_selection_changed)
@@ -113,6 +113,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.library_tree_view.setModel(LibraryModel())
         self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+        self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
         self.update_sync_buttons()
         self.update_sync_stack()
 

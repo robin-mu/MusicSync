@@ -25,6 +25,8 @@ class LibraryModel(XmlObjectModel):
             assert self.library_object is not None  # make ide happy
 
             self.pull_from_xml_object()
+        else:
+            self.library_object = MusicSyncLibrary()
 
     @property
     def path(self) -> str:
