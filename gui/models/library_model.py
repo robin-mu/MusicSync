@@ -71,7 +71,7 @@ class LibraryModel(XmlObjectModel):
     def push_to_xml_object(self):
         children = []
         for i in range(self.root.row_count()):
-            row = cast(XmlObjectModelItem, self.root.child(i))
+            row = self.root.child(i)
             row.push_to_xml_object()
             children.append(row.xml_object)
 

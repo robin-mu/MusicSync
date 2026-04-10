@@ -111,6 +111,8 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         super(XmlObjectModel, self).__init__(parent)
         self.root: XmlObjectModelItem = RootItem()
 
+        self._ignore_remove = False
+
     def columnCount(self, /, parent: QModelIndex = QModelIndex()) -> int:
         return 1
 
@@ -240,7 +242,6 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         return mime
 
     def dropMimeData(self, data, action, row, column, parent, /) -> bool:
-        print('drop', action)
         if action == Qt.DropAction.IgnoreAction:
             return True
 
@@ -261,32 +262,33 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         if row == -1:
             row = self.rowCount(parent)
 
-        return self.moveRows(source_parent, source_row, 1, parent, row)
+        ok = self.moveRows(source_parent, source_row, 1, parent, row)
+        self._ignore_remove = ok
+        return ok
 
     def moveRows(self, source_parent: QModelIndex, source_row: int, count: int, destination_parent: QModelIndex | QPersistentModelIndex,
                  destination_child: int, /):
-        print('move')
-
         if count != 1:
+            return False
+
+        if source_parent == destination_parent and destination_child in (source_row, source_row + 1):
+            return False
+
+        if not self.validate_move(source_parent, source_row, destination_parent, destination_child):
             return False
 
         source_parent_item = self.item_from_index(source_parent)
         destination_parent_item = self.item_from_index(destination_parent)
 
-        if source_parent != destination_parent and destination_child > source_row:
+        self.beginMoveRows(source_parent, source_row, source_row, destination_parent, destination_child)
+
+        if source_parent == destination_parent and destination_child > source_row:
             destination_child -= 1
 
-        if not self.validate_move(source_parent, source_row, destination_parent, destination_child):
-            return False
-
-        print(source_parent, source_row, destination_parent, destination_child)
-
-        self.beginMoveRows(source_parent, source_row, source_row, destination_parent, destination_child)
         moved_item = source_parent_item._pop_child(source_row)
         destination_parent_item._insert_child(destination_child, moved_item)
-        self.endMoveRows()
 
-        print('aa')
+        self.endMoveRows()
         return True
 
     def insert_item_at_index(self, item: XmlObjectModelItem, row: int | None = None, parent: QModelIndex = QModelIndex()):
@@ -304,6 +306,10 @@ class XmlObjectModel(QAbstractItemModel, ABC, metaclass=_ABCQAbstractItemModelMe
         self.insert_item_at_index(item, row, self.index_from_item(parent))
 
     def removeRows(self, row: int, count: int, /, parent: QModelIndex = QModelIndex()) -> bool:
+        if self._ignore_remove:
+            self._ignore_remove = False
+            return True
+
         parent_item = self.item_from_index(parent)
 
         if count <= 0:
