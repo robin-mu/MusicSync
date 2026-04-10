@@ -26,7 +26,7 @@ class XmlObjectModelItem(ABC):
 
         self.xml_object = xml_object
 
-        self.model: XmlObjectModel | None = None
+        self._model: XmlObjectModel | None = None
 
         self.icon = icon
         self.font = font
@@ -34,6 +34,16 @@ class XmlObjectModelItem(ABC):
     @property
     def parent(self) -> XmlObjectModelItem | None:
         return self.item_parent
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value: XmlObjectModel | None):
+        self._model = value
+        for child in self.item_children:
+            child.model = value
 
     def child(self, row: int) -> XmlObjectModelItem:
         return self.item_children[row]
@@ -59,14 +69,14 @@ class XmlObjectModelItem(ABC):
         return child
 
     def append_row(self, item: XmlObjectModelItem):
-        assert self.model is not None
+        assert self._model is not None
 
-        self.model.insert_item_at_item(item, self.row_count(), self)
+        self._model.insert_item_at_item(item, self.row_count(), self)
 
     def remove_rows(self, row: int, count: int):
-        assert self.model is not None
+        assert self._model is not None
 
-        self.model.remove_rows_from_item(row, count, self)
+        self._model.remove_rows_from_item(row, count, self)
 
     @abstractmethod
     def get_text(self) -> str:

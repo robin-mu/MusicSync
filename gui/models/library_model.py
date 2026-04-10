@@ -197,7 +197,7 @@ class FolderItem(XmlObjectModelItem):
         self.xml_object.name = value
 
     def pull_from_xml_object(self):
-        assert self.model is not None
+        assert self._model is not None
         self.remove_rows(0, self.row_count())
 
         for child in self.xml_object.children:

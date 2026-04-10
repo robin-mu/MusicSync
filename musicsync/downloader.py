@@ -2,6 +2,7 @@ import os.path
 from collections import namedtuple
 from functools import partial
 from typing import Callable, Any, cast
+from pprint import pprint
 
 import pandas as pd
 import yt_dlp
@@ -385,10 +386,21 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         # logger.reset_indent()
 
         # 4. REDOWNLOAD_METADATA and DOWNLOAD
-        def filter_redownloaded(info_dict, url: lib.CollectionUrl, actions_df: pd.DataFrame) -> str | None:
+        def filter_redownloaded(info_dict, url: lib.CollectionUrl, actions_df: pd.DataFrame, *args, **kwargs) -> str | None:
+            print(args, kwargs)
+            pprint(info_dict)
+            print(actions_df)
+
             info_dicts.append(info_dict)
 
-            if actions_df.loc[str(info_dict.get('playlist_index', '')), 'action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA:
+            # TODO doesn't work, playlists have to be ignored in a different way
+            if kwargs.get('incomplete', False):
+                return None
+
+            playlist_index = info_dict.get('playlist_index')
+            playlist_index = str(playlist_index) if playlist_index is not None else ''
+
+            if actions_df.loc[playlist_index, 'action'] == lib.TrackSyncAction.REDOWNLOAD_METADATA:
                 return "Skipping download since sync action is set to REDOWNLOAD_METADATA"
 
             return None
@@ -404,13 +416,15 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
         info_dicts = []
         print(self.collection.urls)
         print(download['collection_url'].unique().tolist())
+        print(download)
+        print(download.columns)
         for collection_url in download['collection_url'].unique():
             self.current_url = collection_url
             print(download[download['collection_url'].apply(lambda x: x is collection_url)][['url', 'occurrence_index']])
 
-            tracks = collection_url.get_tracks(download)
+            tracks = download[download['collection_url'].apply(lambda x: x is collection_url)]
             actions = pd.DataFrame({'action': tracks['action']})
-            actions.index = pd.Index(tracks['playlist_index'], name='playlist_index')
+            actions.index = pd.Index(tracks['playlist_index'].apply(str), name='playlist_index')
 
             if collection_url.is_playlist:
                 self.params['playlist_items'] = ','.join(actions.index.tolist())
@@ -424,6 +438,8 @@ class MusicSyncDownloader(yt_dlp.YoutubeDL):
             else:
                 logger.debug(f'Extracting URL {collection_url.url}')
                 info = self.extract_info(collection_url.url)
+
+            # TODO add info dicts for playlist entries from here, not from the filter
 
             info_dicts.append(info)
 

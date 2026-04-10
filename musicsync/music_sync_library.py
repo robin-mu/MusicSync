@@ -462,14 +462,15 @@ class CollectionUrl(XmlObject):
     def get_tracks(self, filter_df: pd.DataFrame) -> pd.DataFrame:
         """
         Filters the given ``filter_df`` dataframe by which tracks of it belong to this collection url. Then filters its own
-        tracks dataframe by the tracks present in the ``filter_df`` returns the result.
+        tracks dataframe by the tracks present in the ``filter_df`` and returns the result.
         :param filter_df: has to contain the columns ``collection_url``, ``url``, and ``occurrence_index``
         """
 
         filter_df = filter_df[filter_df['collection_url'].apply(lambda x: x is self)]
 
-        print(filter_df[['title', 'occurrence_index']])
-        print(self.tracks[['title', 'occurrence_index']])
+        print('Filter df', filter_df[['title', 'occurrence_index']])
+        print('Tracks', self.tracks)
+        #print(self.tracks[['title', 'occurrence_index']])
 
         filtered_tracks = self.tracks.merge(filter_df, how='inner', on=['url', 'occurrence_index'], suffixes=(None, '_filter'))
         print(filtered_tracks['occurrence_index'])
