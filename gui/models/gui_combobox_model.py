@@ -2,7 +2,7 @@ from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from musicsync.music_sync_library import GuiStrEnum
 from musicsync.music_sync_library import TrackSyncStatus
-from scripting.script_types import DownloadScriptWhen
+from musicsync.scripting.script_types import DownloadScriptWhen
 
 
 class GuiComboboxItem(QStandardItem):

@@ -11,7 +11,7 @@ import pandas as pd
 from yt_dlp.postprocessor.common import PostProcessor
 
 import musicsync.downloader as dl
-from bookmark_library import Bookmark
+from musicsync.bookmark_library import Bookmark
 from musicsync.scripting.script_types import Script
 from .utils import classproperty, GuiStrEnum
 from .xml_object import XmlObject

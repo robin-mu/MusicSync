@@ -47,8 +47,8 @@ from musicsync.scripting.util import MULTI_VALUED_JOINER
 from musicsync.scripting.metadata import Metadata
 
 from musicsync.scripting import script_functions
-from scripting.outtmpl import evaluate_outtmpl
-from scripting.util import traverse_context
+from musicsync.scripting.outtmpl import evaluate_outtmpl
+from musicsync.scripting.util import traverse_context
 
 
 # if TYPE_CHECKING:
