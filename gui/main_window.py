@@ -121,7 +121,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
         self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
         self.update_sync_buttons()
-        self.update_sync_stack()
+        self.update_sync_progress()
 
     def open_library(self):
         if self.library_tree_view.model().has_changed():
@@ -142,12 +142,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.library_tree_view.expandAll()
             self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
             self.update_sync_buttons()
-            self.update_sync_stack()
+            self.update_sync_progress()
 
     def save_library(self):
         self.save_settings()
         if self.library_tree_view.model().path:
-            self.library_tree_view.model().to_pickle()
+            # self.library_tree_view.model().to_pickle()
             self.library_tree_view.model().to_xml()
             return True
 
@@ -159,7 +159,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if not filename.endswith('.pkl'):
                 filename += '.pkl'
 
-            self.library_tree_view.model().to_pickle(filename)
+            # self.library_tree_view.model().to_pickle(filename)
             self.library_tree_view.model().to_xml(filename)
             self.library_tree_view.model().path = filename
             return True
@@ -224,7 +224,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
             self.update_tables()
             self.update_sync_buttons()
-            self.update_sync_stack()
+            self.update_sync_progress()
 
             self.sync_stack.setCurrentIndex(1)
             self.metadata_stack.setCurrentIndex(1)
@@ -323,14 +323,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.workers.append(worker)
 
         self.update_sync_buttons()
-        self.update_sync_stack()
+        self.update_sync_progress()
 
     def compare_finished(self, result, extra):
         selected_collection: CollectionItem = extra['selected_collection']
 
         if not isinstance(result, Exception):
-            print(result[['url', 'occurrence_index']])
-
             selected_collection.compare_result = result
 
             self.update_tables()
@@ -345,7 +343,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         selected_collection.comparing = False
         self.update_sync_buttons()
-        self.update_sync_stack()
+        self.update_sync_progress()
 
     def sync_collection(self):
         selected_collection = self.get_selected_collection()
@@ -373,14 +371,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.workers.append(worker)
 
         self.update_sync_buttons()
-        self.update_sync_stack()
+        self.update_sync_progress()
 
     def sync_finished(self, result, extra):
-        print(result, extra)
         extra['selected_collection'].syncing = False
         extra['selected_collection'].compare_result = None
         self.update_sync_buttons()
-        self.update_sync_stack()
+        self.update_sync_progress()
 
     def update_sync_buttons(self, last_selected_action: str = None):
         current_collection = self.get_selected_collection()
@@ -417,27 +414,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.sync_button.setEnabled(True)
             self.sync_button.setStatusTip('Execute all selected sync actions.')
 
-    def update_sync_stack(self):
-        current_collection = self.get_selected_collection()
-        if current_collection is None:
-            return
+    def update_sync_progress(self, progress: float | None = None, text: str | None = None, collection: CollectionItem = None):
+        if collection is None:
+            collection: CollectionItem | None = self.get_selected_collection()
+            if collection is None:
+                return
 
-        # if current_collection.compare_result is None:
-        #     self.sync_table_stack.setCurrentIndex(0)
-        # else:
-        #     self.sync_table_stack.setCurrentIndex(1)
+        if progress is not None and text is not None:
+            collection.sync_progress = progress
+            collection.sync_text = text
 
-        if current_collection.comparing or current_collection.syncing:
-            self.sync_progress_bar.setValue(current_collection.sync_progress * self.sync_progress_bar.maximum())
-            self.sync_progress_label.setText(current_collection.sync_text)
+        if collection.compare_result is None:
+            self.sync_table_stack.setCurrentIndex(0)
+        else:
+            self.sync_table_stack.setCurrentIndex(1)
+
+        if collection.comparing or collection.syncing:
+            self.sync_progress_bar.setValue(collection.sync_progress * self.sync_progress_bar.maximum())
+            self.sync_progress_label.setText(collection.sync_text)
         else:
             self.sync_progress_bar.setValue(0)
             self.sync_progress_label.setText('')
-
-    def update_sync_progress(self, progress: float = 0, text: str = '', collection: CollectionItem = None):
-        collection.sync_progress = progress
-        collection.sync_text = text
-        self.update_sync_stack()
 
     # -----------------------
     # Collection settings tab

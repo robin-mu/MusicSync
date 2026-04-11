@@ -387,15 +387,15 @@ class Collection(XmlObject):
         except Exception as e:
             return e
 
-    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> None | Exception:
+    def sync(self, info_df: pd.DataFrame, progress_callback: Callable[[float, str], None] | None=None, interruption_callback: Callable[[], bool] | None=None) -> pd.DataFrame | Exception:
         if self.downloader is None:
             self.downloader = dl.MusicSyncDownloader(self)
         assert isinstance(self.downloader, dl.MusicSyncDownloader)  # make ide happy
 
-        # try:
-        self.downloader.sync(info_df, progress_callback=progress_callback, interruption_callback=interruption_callback)
-        # except Exception as e:
-        #     return e
+        try:
+            return self.downloader.sync(info_df, progress_callback=progress_callback, interruption_callback=interruption_callback)
+        except Exception as e:
+            return e
 
     def get_real_path(self, url: 'CollectionUrl', track=None):
         folder = self.folder_path
@@ -442,22 +442,8 @@ class CollectionUrl(XmlObject):
             'collection_url': self
         }, index=[0])
 
-        self.tracks = pd.concat([self.tracks, new_track], ignore_index=True).sort_values('playlist_index')
-
-    def update_tracks(self, filter_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        """
-        Filters the given ``filter_df`` dataframe by which tracks of it belong to this collection url. Then filters its own
-        tracks dataframe by the tracks present in the ``filter_df`` and sets all key value pairs specified in ``kwargs``.
-        :returns: dataframe containing only modified tracks
-        """
-        filtered_tracks = self.get_tracks(filter_df)
-
-        for k, v in kwargs.items():
-            self.tracks.loc[filtered_tracks.index, k] = v
-
-        print(self.tracks)
-
-        return self.tracks.loc[filtered_tracks.index, :]
+        self.tracks = pd.concat([self.tracks, new_track], ignore_index=True)
+        self.tracks['occurrence_index'] = self.tracks['occurrence_index'].astype(int)
 
     def get_tracks(self, filter_df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -468,15 +454,43 @@ class CollectionUrl(XmlObject):
 
         filter_df = filter_df[filter_df['collection_url'].apply(lambda x: x is self)]
 
-        print('Filter df', filter_df[['title', 'occurrence_index']])
-        print('Tracks', self.tracks)
-        #print(self.tracks[['title', 'occurrence_index']])
-
         filtered_tracks = self.tracks.merge(filter_df, how='inner', on=['url', 'occurrence_index'], suffixes=(None, '_filter'))
-        print(filtered_tracks['occurrence_index'])
-        print(filtered_tracks.columns)
 
         return filtered_tracks
+
+    def broadcast_update_tracks(self, filter_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """
+        Filters the given ``filter_df`` dataframe by which tracks of it belong to this collection url. Then filters its own
+        tracks dataframe by the tracks present in the ``filter_df`` and updates the key value pairs specified in ``kwargs``
+        to all tracks.
+        :returns: dataframe containing only modified tracks
+        """
+        filtered_tracks = self.get_tracks(filter_df)
+
+        for k, v in kwargs.items():
+            self.tracks.loc[filtered_tracks.index, k] = v
+
+        return self.tracks.loc[filtered_tracks.index, :]
+
+    def update_track(self, track_url, track_occurrence_index=1, **kwargs):
+        if self.tracks.empty:
+            self.add_track(url=track_url, occurrence_index=track_occurrence_index, status=TrackSyncStatus.DOWNLOADED, **kwargs)
+            return
+
+        track_index = self.tracks[(self.tracks['url'] == track_url) & (self.tracks['occurrence_index'] == track_occurrence_index)].index
+
+        if track_index.empty:
+            self.add_track(url=track_url, occurrence_index=track_occurrence_index, status=TrackSyncStatus.DOWNLOADED, **kwargs)
+            return
+
+        track_index = track_index[0]
+        for k, v in kwargs.items():
+            self.tracks.loc[track_index, k] = v
+
+    def remove_tracks(self, filter_df: pd.DataFrame, **kwargs):
+        filtered_tracks = self.get_tracks(filter_df)
+
+        self.tracks = self.tracks[~self.tracks.index.isin(filtered_tracks.index)]
 
     @classmethod
     def from_xml(cls, el: Element) -> 'CollectionUrl':
@@ -532,6 +546,8 @@ class CollectionUrl(XmlObject):
             attrib['permanently_downloaded'] = attrib['permanently_downloaded'] == 'True'
         if isinstance(attrib['occurrence_index'], str):
             attrib['occurrence_index'] = int(attrib['occurrence_index'])
+        if isinstance(attrib['playlist_index'], str):
+            attrib['playlist_index'] = int(attrib['playlist_index'])
 
         return pd.Series(attrib)
 
