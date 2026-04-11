@@ -96,6 +96,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.showMaximized()
 
+        # for debugging
+        self.library_tree_view.setModel(LibraryModel('a.pkl'))
+        self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
+        self.library_tree_view.expandAll()
+        self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
+
     # --------
     # Menu bar
     # --------
@@ -134,6 +140,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.library_tree_view.setModel(LibraryModel(filename))
             self.library_tree_view.selectionModel().selectionChanged.connect(self.tree_selection_changed)
             self.library_tree_view.expandAll()
+            self.scripts_table.setModel(ScriptsModel(deepcopy(self.library_tree_view.model().scripts), window=self))
             self.update_sync_buttons()
             self.update_sync_stack()
 
@@ -382,6 +389,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.sync_button.setEnabled(False)
             return
 
+        if current_collection.compare_result is None:
+            self.compare_button.setEnabled(True)
+            self.sync_button.setEnabled(False)
+            self.sync_button.setStatusTip('You need to compare the current collection before sync can start.')
+            return
+
         if current_collection.comparing or current_collection.syncing:
             self.compare_button.setEnabled(False)
             self.sync_button.setEnabled(False)
@@ -408,6 +421,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_collection = self.get_selected_collection()
         if current_collection is None:
             return
+
+        # if current_collection.compare_result is None:
+        #     self.sync_table_stack.setCurrentIndex(0)
+        # else:
+        #     self.sync_table_stack.setCurrentIndex(1)
 
         if current_collection.comparing or current_collection.syncing:
             self.sync_progress_bar.setValue(current_collection.sync_progress * self.sync_progress_bar.maximum())
